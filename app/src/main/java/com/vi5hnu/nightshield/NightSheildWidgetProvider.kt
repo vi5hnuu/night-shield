@@ -55,8 +55,6 @@ class NightShieldWidgetProvider : AppWidgetProvider() {
     }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        for (id in appWidgetIds) {
-            updateWidget(context)
-        }
+        updateWidget(context);//update all at once
     }
 }
