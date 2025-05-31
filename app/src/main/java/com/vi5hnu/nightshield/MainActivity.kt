@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import com.vi5hnu.nightshield.ui.theme.NightShieldTheme
 import com.vi5hnu.nightshield.screens.HomeScreen
 import androidx.core.net.toUri
+import java.util.Calendar
 
 
 class MainActivity : ComponentActivity() {
@@ -21,19 +22,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
-        hasOverlayPermissionState.value = checkOverlayPermission();
+        hasOverlayPermissionState.value = OverlayHelpers.checkOverlayPermission(applicationContext);
         areServicesRunning.value = OverlayHelpers.areOverlaysActive(applicationContext);
         launchOverlays();
         setContent {
             Log.d("Recomposition", "Main activity recomposing")
-//            LaunchedEffect(Unit) {
-//                snapshotFlow { checkOverlayPermission() }
-//                    .distinctUntilChanged()
-//                    .collect { granted ->
-//                        areServicesRunning.value = granted
-//                    }
-//            }
+            LaunchedEffect(areServicesRunning.value) {
+                NightShieldWidgetProvider.updateWidget(applicationContext);
+            }
 
             NightShieldTheme(dynamicColor = false) {
                 HomeScreen(
@@ -61,11 +57,6 @@ class MainActivity : ComponentActivity() {
         areServicesRunning.value = true
     }
 
-    private fun checkOverlayPermission(): Boolean {
-        return Settings.canDrawOverlays(this);
-    }
-
-
     private fun requestOverlayPermission() {
         val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
         intent.data = "package:$packageName".toUri()
@@ -73,17 +64,17 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startOverlayService() {
-        Intent(this, ScribbleCanvasService::class.java).also {startForegroundService(it)}
+        Intent(this, NightShieldService::class.java).also {startForegroundService(it)}
     }
 
     private fun stopOverlayService() {
-        Intent(this, ScribbleCanvasService::class.java).also { stopService(it) }
+        Intent(this, NightShieldService::class.java).also { stopService(it) }
     }
 
 
     override fun onResume() {
         super.onResume()
-        hasOverlayPermissionState.value = checkOverlayPermission();
+        hasOverlayPermissionState.value = OverlayHelpers.checkOverlayPermission(applicationContext);
         areServicesRunning.value= OverlayHelpers.areOverlaysActive(applicationContext);
     }
 

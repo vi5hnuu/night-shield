@@ -36,7 +36,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 
-class ScribbleCanvasService : Service(), LifecycleOwner,
+class NightShieldService : Service(), LifecycleOwner,
     SavedStateRegistryOwner {
     private val _lifecycleRegistry = LifecycleRegistry(this)
     private val _savedStateRegistryController: SavedStateRegistryController =
@@ -58,7 +58,6 @@ class ScribbleCanvasService : Service(), LifecycleOwner,
         _savedStateRegistryController.performRestore(null)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        OverlayHelpers.setOverlaysActive(applicationContext,false);
 
 
         serviceScope.launch {
@@ -98,15 +97,14 @@ class ScribbleCanvasService : Service(), LifecycleOwner,
         return START_STICKY
     }
 
-
     private fun showOverlay() {
         if (overlayView != null) return
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
 
         overlayView = ComposeView(this).apply {
-            setViewTreeLifecycleOwner(this@ScribbleCanvasService)
-            setViewTreeSavedStateRegistryOwner(this@ScribbleCanvasService)
+            setViewTreeLifecycleOwner(this@NightShieldService)
+            setViewTreeSavedStateRegistryOwner(this@NightShieldService)
             setContent {
                 NightShieldTheme {
                     Box {
@@ -176,12 +174,11 @@ class ScribbleCanvasService : Service(), LifecycleOwner,
         OverlayHelpers.dispose(applicationContext)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         overlayView?.let { windowManager.removeView(it) }
-        OverlayHelpers.setOverlaysActive(applicationContext,false);
     }
 
     companion object {
-        private const val CHANNEL_ID = "scribble_service_channel"
-        private const val CHANNEL_NAME = "Scribble Services"
+        private const val CHANNEL_ID = "night_sheild_service_channel"
+        private const val CHANNEL_NAME = "Night Sheild Services"
 
         private const val NOTIFICATION_ID = 1234
     }

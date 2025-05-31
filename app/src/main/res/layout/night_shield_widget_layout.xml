@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/night_sheild_widget_root"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@android:color/transparent"
+    android:padding="4dp">
+
+    <!-- Inactive Icon -->
+    <ImageView
+        android:id="@+id/sheildAction"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:contentDescription="Start Night Shield"
+        android:src="@drawable/shield_inactive"
+        android:visibility="visible" />
+
+<!--    &lt;!&ndash; Active Icon &ndash;&gt;-->
+<!--    <ImageView-->
+<!--        android:id="@+id/widgetButton"-->
+<!--        android:layout_width="60dp"-->
+<!--        android:layout_height="60dp"-->
+<!--        android:layout_centerInParent="true"-->
+<!--        android:contentDescription="Stop Night Shield"-->
+<!--        android:src="@drawable/shield_active"-->
+<!--        android:visibility="gone" />-->
+</RelativeLayout>
