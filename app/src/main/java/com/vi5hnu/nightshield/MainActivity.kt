@@ -3,83 +3,138 @@ package com.vi5hnu.nightshield
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.*
-import com.vi5hnu.nightshield.ui.theme.NightShieldTheme
-import com.vi5hnu.nightshield.screens.HomeScreen
+import androidx.core.content.edit
 import androidx.core.net.toUri
-import java.util.Calendar
-
+import com.google.android.gms.ads.MobileAds
+import com.vi5hnu.nightshield.screens.HomeScreen
+import com.vi5hnu.nightshield.screens.OnboardingScreen
+import com.vi5hnu.nightshield.ui.theme.NightShieldTheme
 
 class MainActivity : ComponentActivity() {
-    private var hasOverlayPermissionState = mutableStateOf(false)
+
+    private var hasOverlayPermission = mutableStateOf(false)
     private var areServicesRunning = mutableStateOf(false)
+
+    private val prefs by lazy { getSharedPreferences("overlay_prefs", MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        hasOverlayPermissionState.value = OverlayHelpers.checkOverlayPermission(applicationContext);
-        areServicesRunning.value = OverlayHelpers.areOverlaysActive(applicationContext);
-        launchOverlays();
+
+        // Initialize AdMob SDK (non-blocking)
+        MobileAds.initialize(this)
+        AppOpenAdManager.loadAd(this)
+
+        hasOverlayPermission.value = OverlayHelpers.checkOverlayPermission(applicationContext)
+        areServicesRunning.value = OverlayHelpers.areOverlaysActive(applicationContext)
+
+        // Restore persisted settings into NightShieldManager
+        val (color, intensity, allowShake) = OverlayHelpers.loadFilterSettings(applicationContext)
+        NightShieldManager.setCanvasColor(color)
+        NightShieldManager.setFilterIntensity(intensity)
+        NightShieldManager.setAllowShake(allowShake)
+
+        val schedules = OverlayHelpers.loadSchedules(applicationContext)
+        NightShieldManager.setSchedules(schedules)
+
+        val appConfigs = OverlayHelpers.loadAppConfigs(applicationContext)
+        NightShieldManager.setAppFilterConfigs(appConfigs)
+
+        // Auto-start service if filter was active
+        if (hasOverlayPermission.value && areServicesRunning.value) {
+            startOverlayService()
+        }
+
         setContent {
-            Log.d("Recomposition", "Main activity recomposing")
             LaunchedEffect(areServicesRunning.value) {
-                NightShieldWidgetProvider.updateWidget(applicationContext);
+                NightShieldWidgetProvider.updateWidget(applicationContext)
             }
 
-            NightShieldTheme(dynamicColor = false) {
-                HomeScreen(
-                    onAllowShake={ NightShieldManager.setAllowShake(it)},
-                    allowShake= NightShieldManager.allowShake.collectAsState().value,
-                    areServicesActive = areServicesRunning.value,
-                    hasOverlayPermission = hasOverlayPermissionState.value,
-                    onPermissionRequest = {requestOverlayPermission()},
-                    launchOverlays = {launchOverlays()},
-                    stopOverlays = {stopOverlays()})
+            NightShieldTheme {
+                var showOnboarding by remember {
+                    mutableStateOf(!prefs.getBoolean("onboarding_complete", false))
+                }
+
+                if (showOnboarding) {
+                    OnboardingScreen(onComplete = {
+                        prefs.edit { putBoolean("onboarding_complete", true) }
+                        showOnboarding = false
+                    })
+                } else {
+                    HomeScreen(
+                        onAllowShake = { NightShieldManager.setAllowShake(it) },
+                        allowShake = NightShieldManager.allowShake.collectAsState().value,
+                        areServicesActive = areServicesRunning.value,
+                        hasOverlayPermission = hasOverlayPermission.value,
+                        onPermissionRequest = { requestOverlayPermission() },
+                        launchOverlays = { launchOverlays() },
+                        stopOverlays = { stopOverlays() }
+                    )
+                }
             }
         }
     }
 
-    private fun stopOverlays(){
-        stopOverlayService();
-        OverlayHelpers.setOverlaysActive(this, false);
-        areServicesRunning.value = false
-    }
-
-    private fun launchOverlays(){
-        if (!hasOverlayPermissionState.value) return;
-        startOverlayService();
-        OverlayHelpers.setOverlaysActive(this, true);
+    private fun launchOverlays() {
+        if (!hasOverlayPermission.value) return
+        startOverlayService()
+        OverlayHelpers.setOverlaysActive(this, true)
         areServicesRunning.value = true
     }
 
+    private fun stopOverlays() {
+        stopOverlayService()
+        OverlayHelpers.setOverlaysActive(this, false)
+        areServicesRunning.value = false
+        NightShieldManager.setSleepTimer(0)
+    }
+
     private fun requestOverlayPermission() {
-        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
-        intent.data = "package:$packageName".toUri()
-        startActivity(intent);
+        startActivity(
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                data = "package:$packageName".toUri()
+            }
+        )
     }
 
     private fun startOverlayService() {
-        Intent(this, NightShieldService::class.java).also {startForegroundService(it)}
+        startForegroundService(Intent(this, NightShieldService::class.java))
     }
 
     private fun stopOverlayService() {
-        Intent(this, NightShieldService::class.java).also { stopService(it) }
+        stopService(Intent(this, NightShieldService::class.java))
     }
-
 
     override fun onResume() {
         super.onResume()
-        hasOverlayPermissionState.value = OverlayHelpers.checkOverlayPermission(applicationContext);
-        areServicesRunning.value= OverlayHelpers.areOverlaysActive(applicationContext);
+        hasOverlayPermission.value = OverlayHelpers.checkOverlayPermission(applicationContext)
+        val active = OverlayHelpers.areOverlaysActive(applicationContext)
+        if (active && hasOverlayPermission.value) startOverlayService()
+        areServicesRunning.value = active
+        // Show App Open ad when returning to app (not on very first launch)
+        AppOpenAdManager.showAdIfAvailable(this)
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
+    override fun onPause() {
+        super.onPause()
+        persistSettings()
+    }
+
+    private fun persistSettings() {
+        OverlayHelpers.saveFilterSettings(
+            this,
+            NightShieldManager.canvasColor.value,
+            NightShieldManager.filterIntensity.value,
+            NightShieldManager.allowShake.value
+        )
+        OverlayHelpers.saveSchedules(this, NightShieldManager.schedules.value)
+        OverlayHelpers.saveAppConfigs(this, NightShieldManager.appFilterConfigs.value)
+
+        // Reschedule alarms with latest schedule list
+        AlarmHelpers.scheduleAll(this, NightShieldManager.schedules.value)
     }
 }
-

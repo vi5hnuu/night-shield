@@ -11,13 +11,13 @@ import android.widget.RemoteViews
 class NightShieldWidgetProvider : AppWidgetProvider() {
 
     companion object {
-        private const val TOGGLE_SHEILD_SIGNAL = "com.vi5hnu.nightshield.TOGGLE_SHEILD_SIGNAL"
+        private const val TOGGLE_SHIELD_SIGNAL = "com.vi5hnu.nightshield.TOGGLE_SHIELD_SIGNAL"
 
         fun updateWidget(context: Context) {
             val views = RemoteViews(context.packageName, R.layout.night_shield_widget_layout)
 
             val intent = Intent().apply {
-                action = TOGGLE_SHEILD_SIGNAL
+                action = TOGGLE_SHIELD_SIGNAL
                 setClass(context, NightShieldWidgetProvider::class.java)
             }
 
@@ -25,10 +25,10 @@ class NightShieldWidgetProvider : AppWidgetProvider() {
 
             val isRunning = OverlayHelpers.areOverlaysActive(context)
             views.setImageViewResource(
-                R.id.sheildAction,
+                R.id.shieldAction,
                 if (isRunning) R.drawable.shield_active else R.drawable.shield_inactive
             )
-            views.setOnClickPendingIntent(R.id.sheildAction, pendingIntent)
+            views.setOnClickPendingIntent(R.id.shieldAction, pendingIntent)
 
             val appWidgetManager = AppWidgetManager.getInstance(context)
             val thisWidget = ComponentName(context, NightShieldWidgetProvider::class.java)
@@ -39,7 +39,7 @@ class NightShieldWidgetProvider : AppWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         val isEnabled=intent.action==AppWidgetManager.ACTION_APPWIDGET_ENABLED;
-        val customSignal=intent.action==TOGGLE_SHEILD_SIGNAL;
+        val customSignal=intent.action==TOGGLE_SHIELD_SIGNAL;
         if (!(intent.action!=null && (isEnabled || customSignal))) return;
         val isRunning = OverlayHelpers.areOverlaysActive(context)
         if(customSignal){

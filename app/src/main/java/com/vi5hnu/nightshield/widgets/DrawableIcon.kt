@@ -10,11 +10,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun DrawableIcon(@DrawableRes id: Int) {
+fun DrawableIcon(@DrawableRes id: Int, contentDescription: String = "") {
     Icon(
         painter = painterResource(id = id),
-        contentDescription = "icon",
-        tint = MaterialTheme.colorScheme.onBackground, // Change color as needed
-        modifier = Modifier.size(28.dp) // Adjust size if needed
+        contentDescription = contentDescription,
+        tint = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.size(24.dp)
     )
 }

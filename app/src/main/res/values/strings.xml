@@ -1,3 +1,84 @@
 <resources>
     <string name="app_name">Night Shield</string>
+
+    <!-- Notification -->
+    <string name="notification_title">Night Shield Active</string>
+    <string name="notification_text">Blue light filter is running</string>
+    <string name="notification_channel_name">Night Shield Service</string>
+    <string name="notification_action_stop">Stop Filter</string>
+
+    <!-- HomeScreen buttons -->
+    <string name="btn_activate">Activate Filter</string>
+    <string name="btn_stop">Stop Filter</string>
+    <string name="btn_request_permission">Grant Overlay Permission</string>
+
+    <!-- Settings tiles -->
+    <string name="shake_toggle_title">Shake to Toggle</string>
+    <string name="shake_toggle_subtitle">Shake device to turn filter on or off</string>
+    <string name="filter_color_title">Filter Color</string>
+    <string name="filter_color_subtitle">Tap to choose a custom color</string>
+    <string name="filter_intensity_title">Intensity</string>
+    <string name="filter_intensity_subtitle">Adjust overlay strength</string>
+    <string name="temperature_title">Quick Presets</string>
+    <string name="temperature_subtitle">Tap a preset to apply instantly</string>
+    <string name="schedule_title">Auto Schedule</string>
+    <string name="schedule_subtitle">Turn filter on/off at set times</string>
+    <string name="sleep_timer_title">Sleep Timer</string>
+    <string name="sleep_timer_subtitle">Auto-off after selected duration</string>
+    <string name="per_app_filter_title">Per-App Filter</string>
+    <string name="per_app_filter_subtitle">Customize or disable filter for specific apps</string>
+
+    <!-- Status -->
+    <string name="status_active">Filter Active</string>
+    <string name="status_inactive">Filter Off</string>
+    <string name="permission_required_body">Tap above to grant the overlay permission. Night Shield needs it to display the filter over other apps.</string>
+
+    <!-- Footer -->
+    <string name="footer_text">Made with love by Vishnu Kumar</string>
+
+    <!-- Color Picker -->
+    <string name="alpha_label">Opacity</string>
+
+    <!-- Sleep timer -->
+    <string name="sleep_timer_off">Off</string>
+
+    <!-- Schedule -->
+    <string name="schedule_add">Add Schedule</string>
+    <string name="schedule_on">Filter ON</string>
+    <string name="schedule_off">Filter OFF</string>
+    <string name="schedule_remove">Remove</string>
+    <string name="schedule_enabled">Active</string>
+    <string name="schedule_disabled">Paused</string>
+    <string name="schedule_conflict_warning">Conflicting schedules may be ignored</string>
+
+    <!-- Battery optimization -->
+    <string name="battery_opt_title">Battery Optimization</string>
+    <string name="battery_opt_body">Disable battery optimization so the filter stays on reliably.</string>
+    <string name="battery_opt_fix">Fix Now</string>
+    <string name="battery_opt_dismiss">Dismiss</string>
+
+    <!-- Per-app filter -->
+    <string name="per_app_no_items">No apps configured. Tap + to add one.</string>
+    <string name="per_app_disable_label">Pause filter</string>
+    <string name="per_app_custom_intensity">Custom intensity</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_title_1">Protect Your Eyes</string>
+    <string name="onboarding_body_1">Night Shield filters blue light from your screen, helping you sleep better and reduce eye strain.</string>
+    <string name="onboarding_title_2">Shake to Toggle</string>
+    <string name="onboarding_body_2">Shake your phone anywhere to quickly turn the filter on or off without opening the app.</string>
+    <string name="onboarding_title_3">Customize Your Filter</string>
+    <string name="onboarding_body_3">Pick a color and intensity that feels comfortable. Warm tones work best at night.</string>
+    <string name="onboarding_get_started">Get Started</string>
+    <string name="onboarding_next">Next</string>
+    <string name="onboarding_skip">Skip</string>
+
+    <!-- Widget -->
+    <string name="widget_description">Toggle Night Shield blue light filter</string>
+
+    <!-- QS Tile -->
+    <string name="qs_tile_label">Night Shield</string>
+
+    <!-- App description (Play Store metadata) -->
+    <string name="app_description">Blue light filter overlay to protect your eyes at night</string>
 </resources>

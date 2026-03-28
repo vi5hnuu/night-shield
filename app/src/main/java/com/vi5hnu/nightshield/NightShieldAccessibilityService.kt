@@ -1,0 +1,78 @@
+package com.vi5hnu.nightshield
+
+import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.view.accessibility.AccessibilityEvent
+
+/**
+ * Monitors the foreground app and automatically adjusts the filter
+ * based on per-app rules configured by the user.
+ *
+ * When a configured app comes to foreground:
+ *  - If filterDisabled = true  → overlay is hidden (filter paused)
+ *  - If customIntensity != null → overlay intensity is temporarily adjusted
+ * When the app leaves foreground → global settings are restored.
+ */
+class NightShieldAccessibilityService : AccessibilityService() {
+
+    private var lastPackage: String? = null
+    // Stores the global intensity before any per-app override so we can restore it
+    private var savedIntensity: Float? = null
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        serviceInfo = AccessibilityServiceInfo().apply {
+            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                         AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
+            notificationTimeout = 100
+            flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        }
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        // Only react to window state changes (app switches)
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val packageName = event.packageName?.toString() ?: return
+
+        // Ignore our own app, system UI, and keyboard / launcher overlays
+        if (packageName == applicationContext.packageName) return
+        if (packageName == "com.android.systemui") return
+        if (packageName == lastPackage) return
+
+        lastPackage = packageName
+        applyRuleForPackage(packageName)
+    }
+
+    private fun applyRuleForPackage(packageName: String) {
+        val configs = NightShieldManager.appFilterConfigs.value
+        val config = configs[packageName]
+
+        if (config != null) {
+            // Entering a configured app — save global intensity if we haven't already
+            if (config.customIntensity != null && savedIntensity == null) {
+                savedIntensity = NightShieldManager.filterIntensity.value
+                NightShieldManager.setFilterIntensity(config.customIntensity)
+            }
+            NightShieldManager.setFilterTemporarilyDisabled(config.filterDisabled)
+        } else {
+            // Leaving a configured app — restore everything
+            restore()
+        }
+    }
+
+    private fun restore() {
+        NightShieldManager.setFilterTemporarilyDisabled(false)
+        savedIntensity?.let {
+            NightShieldManager.setFilterIntensity(it)
+            savedIntensity = null
+        }
+    }
+
+    override fun onInterrupt() = restore()
+
+    override fun onDestroy() {
+        super.onDestroy()
+        restore()
+    }
+}
