@@ -5,21 +5,28 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.util.Log
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import kotlin.math.sqrt
 
 @Composable
-fun ShakeDetector(minShakeDuration:Int=1000,shakeThreshold: Float=10f,onShake: () -> Unit) {
+fun ShakeDetector(
+    minShakeDuration: Int = 800,
+    shakeThreshold: Float = 10f,
+    onShake: () -> Unit
+) {
     val context = LocalContext.current
-    val onShakeState = rememberUpdatedState(onShake) // Capture latest lambda
+    val onShakeState = rememberUpdatedState(onShake)
 
     DisposableEffect(context) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
-        val sensorEventListener = object : SensorEventListener {
+        val listener = object : SensorEventListener {
             private var lastShakeTimestamp = 0L
             private var shakeStartTimestamp = 0L
             private var isShaking = false
@@ -27,12 +34,10 @@ fun ShakeDetector(minShakeDuration:Int=1000,shakeThreshold: Float=10f,onShake: (
             override fun onSensorChanged(event: SensorEvent) {
                 val (x, y, z) = event.values
                 val acceleration = sqrt(x * x + y * y + z * z) - SensorManager.GRAVITY_EARTH
-
                 val currentTime = System.currentTimeMillis()
 
                 if (acceleration > shakeThreshold) {
                     if (!isShaking) {
-                        // Start shake detection
                         shakeStartTimestamp = currentTime
                         isShaking = true
                     }
@@ -40,13 +45,12 @@ fun ShakeDetector(minShakeDuration:Int=1000,shakeThreshold: Float=10f,onShake: (
                 }
 
                 if (isShaking) {
-                    // If shaking lasts for at least 1 second, trigger onShake()
                     if (currentTime - shakeStartTimestamp >= minShakeDuration) {
+                        vibrate(context)
                         onShakeState.value()
-                        isShaking = false // Reset shake detection
+                        isShaking = false
                     }
-                    // If user stops shaking before 1 second, reset
-                    if (currentTime - lastShakeTimestamp > 300) { // No movement for 300ms
+                    if (currentTime - lastShakeTimestamp > 300) {
                         isShaking = false
                     }
                 }
@@ -56,12 +60,27 @@ fun ShakeDetector(minShakeDuration:Int=1000,shakeThreshold: Float=10f,onShake: (
         }
 
         accelerometer?.let {
-            sensorManager.registerListener(sensorEventListener, it, SensorManager.SENSOR_DELAY_UI)
+            sensorManager.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI)
         }
 
-        onDispose {
-            Log.i("ShakeDetector","Shake detector disposed");
-            sensorManager.unregisterListener(sensorEventListener)
+        onDispose { sensorManager.unregisterListener(listener) }
+    }
+}
+
+private fun vibrate(context: Context) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+        vm.defaultVibrator.vibrate(
+            VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE)
+        )
+    } else {
+        @Suppress("DEPRECATION")
+        val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(80)
         }
     }
 }

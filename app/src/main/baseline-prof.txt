@@ -1,0 +1,13 @@
+# Startup-critical class paths for ART pre-compilation
+# This tells the Android runtime to AOT-compile these on install,
+# reducing cold-start time for Night Shield.
+
+HSPLcom/vi5hnu/nightshield/MainActivity;-><init>()V
+HSPLcom/vi5hnu/nightshield/MainActivity;->onCreate(Landroid/os/Bundle;)V
+HSPLcom/vi5hnu/nightshield/NightShieldManager;-><clinit>()V
+HSPLcom/vi5hnu/nightshield/NightShieldService;-><init>()V
+HSPLcom/vi5hnu/nightshield/OverlayHelpers;->areOverlaysActive(Landroid/content/Context;)Z
+HSPLcom/vi5hnu/nightshield/OverlayHelpers;->checkOverlayPermission(Landroid/content/Context;)Z
+HSPLcom/vi5hnu/nightshield/OverlayHelpers;->loadFilterSettings(Landroid/content/Context;)Lkotlin/Triple;
+HSPLcom/vi5hnu/nightshield/screens/HomeScreenKt;->HomeScreen(ZZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;ZLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)V
+HSPLcom/vi5hnu/nightshield/ui/theme/ThemeKt;->NightShieldTheme(Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;I)V

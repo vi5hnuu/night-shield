@@ -1,21 +1,35 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Keep stack traces readable in crash reports
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep system-facing components (accessed by OS via manifest)
+-keep public class com.vi5hnu.nightshield.NightShieldService { *; }
+-keep public class com.vi5hnu.nightshield.NightShieldWidgetProvider { *; }
+-keep public class com.vi5hnu.nightshield.NightShieldTileService { *; }
+-keep public class com.vi5hnu.nightshield.OverlayAlarmReceiver { *; }
+-keep public class com.vi5hnu.nightshield.MainActivity { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Keep NightShieldManager + models
+-keep class com.vi5hnu.nightshield.NightShieldManager { *; }
+-keep class com.vi5hnu.nightshield.NightShieldManager$TemperaturePreset { *; }
+-keep class com.vi5hnu.nightshield.ScheduleEntry { *; }
+-keep class com.vi5hnu.nightshield.ScheduleAction { *; }
+-keep class com.vi5hnu.nightshield.AppFilterConfig { *; }
+-keep public class com.vi5hnu.nightshield.BootReceiver { *; }
+-keep public class com.vi5hnu.nightshield.NightShieldAccessibilityService { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep OverlayHelpers and AlarmHelpers (used by multiple components)
+-keep class com.vi5hnu.nightshield.OverlayHelpers { *; }
+-keep class com.vi5hnu.nightshield.AlarmHelpers { *; }
+
+# Color picker library
+-keep class com.github.skydoves.colorpicker.** { *; }
+-dontwarn com.github.skydoves.colorpicker.**
+
+# Kotlin coroutines
+-keepclassmembernames class kotlinx.** {
+    volatile <fields>;
+}
+
+# Jetpack Compose — keep stable annotations
+-keep class androidx.compose.runtime.** { *; }

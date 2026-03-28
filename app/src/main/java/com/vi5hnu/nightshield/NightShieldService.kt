@@ -31,26 +31,26 @@ import com.vi5hnu.nightshield.widgets.ColorPicker
 import com.vi5hnu.nightshield.widgets.FilterOverlay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 
-class NightShieldService : Service(), LifecycleOwner,
-    SavedStateRegistryOwner {
+class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
+
     private val _lifecycleRegistry = LifecycleRegistry(this)
-    private val _savedStateRegistryController: SavedStateRegistryController =
-        SavedStateRegistryController.create(this)
-    override val savedStateRegistry: SavedStateRegistry =
-        _savedStateRegistryController.savedStateRegistry
+    private val _savedStateRegistryController = SavedStateRegistryController.create(this)
+    override val savedStateRegistry: SavedStateRegistry = _savedStateRegistryController.savedStateRegistry
     override val lifecycle: Lifecycle = _lifecycleRegistry
+
     private lateinit var windowManager: WindowManager
     private var overlayView: ComposeView? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var sleepTimerJob: Job? = null
 
-    override fun onBind(intent: Intent?): IBinder? {
-        return null
-    }
+    override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -59,22 +59,29 @@ class NightShieldService : Service(), LifecycleOwner,
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
-
+        // Update overlay interactivity when color picker opens/closes
         serviceScope.launch {
-            NightShieldManager.isCanvasColorPickerVisible.collect { enabled ->
+            NightShieldManager.isCanvasColorPickerVisible.collect { visible ->
                 overlayView?.let {
                     val params = it.layoutParams as WindowManager.LayoutParams
-
-                    if (enabled) {
-                        // Enable overlay interaction (blocks mobile UI)
-                        params.flags = NightShieldManager.inactiveFieldFlags;
-                    } else {
-                        // Allow full mobile UI interaction
-                        params.flags = NightShieldManager.activeFieldFlags
-
-                    }
-
+                    params.flags = if (visible) NightShieldManager.inactiveFieldFlags
+                                   else NightShieldManager.activeFieldFlags
                     windowManager.updateViewLayout(it, params)
+                }
+            }
+        }
+
+        // Sleep timer countdown
+        serviceScope.launch {
+            NightShieldManager.sleepTimerMinutes.collect { minutes ->
+                sleepTimerJob?.cancel()
+                if (minutes > 0) {
+                    sleepTimerJob = launch {
+                        delay(minutes * 60 * 1000L)
+                        OverlayHelpers.setOverlaysActive(applicationContext, false)
+                        NightShieldManager.setSleepTimer(0)
+                        stopSelf()
+                    }
                 }
             }
         }
@@ -85,15 +92,10 @@ class NightShieldService : Service(), LifecycleOwner,
         createNotificationChannel()
         val notification = createNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
-
         return START_STICKY
     }
 
@@ -108,21 +110,24 @@ class NightShieldService : Service(), LifecycleOwner,
             setContent {
                 NightShieldTheme {
                     Box {
-                        val showColorPicker=NightShieldManager.isCanvasColorPickerVisible.collectAsState();
+                        val showColorPicker = NightShieldManager.isCanvasColorPickerVisible.collectAsState()
 
-                        FilterOverlay{NightShieldManager.setIsCanvasColorPickerVisible(false)}
+                        FilterOverlay(onTap = {
+                            NightShieldManager.setIsCanvasColorPickerVisible(!showColorPicker.value)
+                        })
 
-                        //show canvas color picker
                         if (showColorPicker.value) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .align(Alignment.Center)
+                                    .align(Alignment.BottomCenter)
                             ) {
-                                val color=NightShieldManager.canvasColor.collectAsState()
-                                ColorPicker(sliderRange = 0f..0.6f,initialColor = color.value,onChange = {
-                                    NightShieldManager.setCanvasColor(color = it)
-                                })
+                                val color = NightShieldManager.canvasColor.collectAsState()
+                                ColorPicker(
+                                    initialColor = color.value,
+                                    onChange = { NightShieldManager.setCanvasColor(it) },
+                                    onDismiss = { NightShieldManager.setIsCanvasColorPickerVisible(false) }
+                                )
                             }
                         }
                     }
@@ -130,57 +135,58 @@ class NightShieldService : Service(), LifecycleOwner,
             }
         }
 
-
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
-            getOverlayType(),
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             NightShieldManager.activeFieldFlags,
             PixelFormat.TRANSLUCENT
         )
-        params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         windowManager.addView(overlayView, params)
     }
 
-    private fun getOverlayType(): Int {
-        return WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-    }
-
     private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            CHANNEL_NAME,
-            NotificationManager.IMPORTANCE_DEFAULT
-        )
-        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        manager.createNotificationChannel(channel)
+        val channel = NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW)
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
     }
 
     private fun createNotification(): Notification {
-        val notificationIntent = Intent(this, MainActivity::class.java)
-        val pendingIntent =
-            PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)
-
+        val openIntent = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        val stopIntent = PendingIntent.getBroadcast(
+            this, 1,
+            Intent(this, NightShieldWidgetProvider::class.java).apply {
+                action = "com.vi5hnu.nightshield.TOGGLE_SHIELD_SIGNAL"
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("nightshield service")
-            .setContentText("nightshieldr draw board is actively running")
-            .setContentIntent(pendingIntent)
+            .setSmallIcon(R.drawable.ic_notification_24)
+            .setContentTitle(getString(R.string.notification_title))
+            .setContentText(getString(R.string.notification_text))
+            .setContentIntent(openIntent)
+            .setOngoing(true)
+            .addAction(R.drawable.ic_notification_24, getString(R.string.notification_action_stop), stopIntent)
             .build()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        serviceScope.cancel();
+        sleepTimerJob?.cancel()
+        serviceScope.cancel()
         OverlayHelpers.dispose(applicationContext)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         overlayView?.let { windowManager.removeView(it) }
+        overlayView = null
     }
 
     companion object {
-        private const val CHANNEL_ID = "night_sheild_service_channel"
-        private const val CHANNEL_NAME = "Night Sheild Services"
-
+        private const val CHANNEL_ID = "night_shield_service_channel"
+        private const val CHANNEL_NAME = "Night Shield Service"
         private const val NOTIFICATION_ID = 1234
     }
 }
-
