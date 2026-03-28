@@ -108,6 +108,11 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
+        <!-- AdMob App ID -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-4715945578201106~8466784239" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

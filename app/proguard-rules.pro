@@ -26,6 +26,10 @@
 -keep class com.github.skydoves.colorpicker.** { *; }
 -dontwarn com.github.skydoves.colorpicker.**
 
+# AdMob / Google Mobile Ads
+-keep class com.google.android.gms.ads.** { *; }
+-dontwarn com.google.android.gms.ads.**
+
 # Kotlin coroutines
 -keepclassmembernames class kotlinx.** {
     volatile <fields>;

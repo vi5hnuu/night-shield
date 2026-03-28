@@ -71,4 +71,7 @@ dependencies {
 
     // WorkManager (retained for background compatibility)
     implementation(libs.androidx.work.runtime.ktx)
+
+    // AdMob
+    implementation(libs.play.services.ads)
 }

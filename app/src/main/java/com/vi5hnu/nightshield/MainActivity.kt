@@ -9,6 +9,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
 import androidx.core.content.edit
 import androidx.core.net.toUri
+import com.google.android.gms.ads.MobileAds
 import com.vi5hnu.nightshield.screens.HomeScreen
 import com.vi5hnu.nightshield.screens.OnboardingScreen
 import com.vi5hnu.nightshield.ui.theme.NightShieldTheme
@@ -23,6 +24,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Initialize AdMob SDK (non-blocking)
+        MobileAds.initialize(this)
+        AppOpenAdManager.loadAd(this)
 
         hasOverlayPermission.value = OverlayHelpers.checkOverlayPermission(applicationContext)
         areServicesRunning.value = OverlayHelpers.areOverlaysActive(applicationContext)
@@ -108,9 +113,10 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         hasOverlayPermission.value = OverlayHelpers.checkOverlayPermission(applicationContext)
         val active = OverlayHelpers.areOverlaysActive(applicationContext)
-        // Recover if service was killed by system
         if (active && hasOverlayPermission.value) startOverlayService()
         areServicesRunning.value = active
+        // Show App Open ad when returning to app (not on very first launch)
+        AppOpenAdManager.showAdIfAvailable(this)
     }
 
     override fun onPause() {

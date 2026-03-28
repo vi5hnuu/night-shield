@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
@@ -18,6 +17,13 @@ import androidx.compose.animation.core.*
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.viewinterop.AndroidView
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.AdSize
+import com.google.android.gms.ads.AdView
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -362,6 +368,9 @@ fun HomeScreen(
                 Spacer(Modifier.height(24.dp))
             }
 
+            // ── Banner ad ─────────────────────────────────────────────────────
+            BannerAd()
+
             // ── Footer ────────────────────────────────────────────────────────
             Box(
                 modifier = Modifier
@@ -401,6 +410,24 @@ fun HomeScreen(
             )
         }
     }
+}
+
+// ── Banner ad ─────────────────────────────────────────────────────────────────
+
+private const val BANNER_AD_UNIT_ID = "ca-app-pub-4715945578201106/5606751408"
+
+@Composable
+private fun BannerAd() {
+    AndroidView(
+        modifier = Modifier.fillMaxWidth(),
+        factory = { ctx ->
+            AdView(ctx).apply {
+                setAdSize(AdSize.BANNER)
+                adUnitId = BANNER_AD_UNIT_ID
+                loadAd(AdRequest.Builder().build())
+            }
+        }
+    )
 }
 
 // ── Reusable composables ──────────────────────────────────────────────────────
@@ -1052,7 +1079,8 @@ private fun AppConfigRow(
 
 // ── Installed app picker bottom sheet ─────────────────────────────────────────
 
-private data class AppInfo(val packageName: String, val label: String, val icon: Drawable?)
+// Icon not stored in AppInfo — loaded lazily per visible item on IO thread
+private data class AppInfo(val packageName: String, val label: String)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1064,25 +1092,31 @@ private fun AppPickerSheet(
 ) {
     var query by remember { mutableStateOf("") }
 
-    // Load installed user apps once (off the main thread via remember with a key)
-    val allApps: List<AppInfo> = remember {
-        val pm = context.packageManager
-        pm.getInstalledApplications(0)
-            .filter { info ->
-                info.flags and ApplicationInfo.FLAG_SYSTEM == 0 &&  // user-installed only
-                info.packageName != context.packageName              // exclude ourselves
-            }
-            .map { info ->
-                AppInfo(
-                    packageName = info.packageName,
-                    label = pm.getApplicationLabel(info).toString(),
-                    icon = runCatching { pm.getApplicationIcon(info.packageName) }.getOrNull()
-                )
-            }
-            .sortedBy { it.label.lowercase() }
+    // Load app list on IO thread so the button tap never blocks the main thread
+    var allApps by remember { mutableStateOf<List<AppInfo>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        val apps = withContext(Dispatchers.IO) {
+            val pm = context.packageManager
+            pm.getInstalledApplications(0)
+                .filter { info ->
+                    info.flags and ApplicationInfo.FLAG_SYSTEM == 0 &&
+                    info.packageName != context.packageName
+                }
+                .map { info ->
+                    AppInfo(
+                        packageName = info.packageName,
+                        label = pm.getApplicationLabel(info).toString()
+                    )
+                }
+                .sortedBy { it.label.lowercase() }
+        }
+        allApps = apps
+        isLoading = false
     }
 
-    val filtered = remember(query, alreadyAdded) {
+    val filtered = remember(query, allApps, alreadyAdded) {
         allApps.filter { app ->
             app.packageName !in alreadyAdded &&
             (query.isBlank() || app.label.contains(query, ignoreCase = true) ||
@@ -1129,75 +1163,89 @@ private fun AppPickerSheet(
 
             Spacer(Modifier.height(8.dp))
 
-            if (filtered.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        if (query.isBlank()) "No user-installed apps found" else "No apps match \"$query\"",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
-                    )
+            when {
+                isLoading -> {
+                    Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                    }
                 }
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                    items(filtered, key = { it.packageName }) { app ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onAppSelected(app.packageName, app.label) }
-                                .padding(horizontal = 20.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            // App icon
-                            val iconBitmap: ImageBitmap? = remember(app.packageName) {
-                                runCatching { app.icon?.toBitmap(72, 72)?.asImageBitmap() }.getOrNull()
-                            }
-                            if (iconBitmap != null) {
-                                Image(
-                                    bitmap = iconBitmap,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp))
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        painterResource(R.drawable.ic_apps_24),
+                filtered.isEmpty() -> {
+                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            if (query.isBlank()) "No apps found" else "No apps match \"$query\"",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+                else -> {
+                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                        items(filtered, key = { it.packageName }) { app ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onAppSelected(app.packageName, app.label) }
+                                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                // Load icon lazily on IO thread — null until ready, shows placeholder
+                                val iconBitmap by produceState<ImageBitmap?>(null, app.packageName) {
+                                    value = withContext(Dispatchers.IO) {
+                                        runCatching {
+                                            context.packageManager
+                                                .getApplicationIcon(app.packageName)
+                                                .toBitmap(72, 72)
+                                                .asImageBitmap()
+                                        }.getOrNull()
+                                    }
+                                }
+
+                                if (iconBitmap != null) {
+                                    Image(
+                                        bitmap = iconBitmap!!,
                                         contentDescription = null,
-                                        modifier = Modifier.size(22.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp))
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            painterResource(R.drawable.ic_apps_24),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(22.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        app.label,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        app.packageName,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                     )
                                 }
                             }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    app.label,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Text(
-                                    app.packageName,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                )
-                            }
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 20.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                thickness = 0.5.dp
+                            )
                         }
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 20.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            thickness = 0.5.dp
-                        )
+                        item { Spacer(Modifier.navigationBarsPadding().height(16.dp)) }
                     }
-                    item { Spacer(Modifier.navigationBarsPadding().height(16.dp)) }
                 }
             }
         }
