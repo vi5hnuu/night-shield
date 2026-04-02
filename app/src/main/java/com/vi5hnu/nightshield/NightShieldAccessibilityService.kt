@@ -2,6 +2,7 @@ package com.vi5hnu.nightshield
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 
 /**
@@ -18,6 +19,7 @@ class NightShieldAccessibilityService : AccessibilityService() {
     private var lastPackage: String? = null
     // Stores the global intensity before any per-app override so we can restore it
     private var savedIntensity: Float? = null
+    private var shakeHelper: ShakeHelper? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -28,6 +30,23 @@ class NightShieldAccessibilityService : AccessibilityService() {
             notificationTimeout = 100
             flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
+
+        // Full shake toggle (on→off and off→on) via the always-running accessibility service
+        shakeHelper = ShakeHelper(applicationContext) {
+            if (!NightShieldManager.allowShake.value) return@ShakeHelper
+            NightShieldManager.tryShakeToggle {
+                if (OverlayHelpers.areOverlaysActive(applicationContext)) {
+                    applicationContext.stopService(Intent(applicationContext, NightShieldService::class.java))
+                    OverlayHelpers.setOverlaysActive(applicationContext, false)
+                    NightShieldManager.setSleepTimer(0)
+                } else if (OverlayHelpers.checkOverlayPermission(applicationContext)) {
+                    OverlayHelpers.setOverlaysActive(applicationContext, true)
+                    applicationContext.startForegroundService(Intent(applicationContext, NightShieldService::class.java))
+                }
+                NightShieldWidgetProvider.updateWidget(applicationContext)
+            }
+        }
+        shakeHelper?.start()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
@@ -69,10 +88,14 @@ class NightShieldAccessibilityService : AccessibilityService() {
         }
     }
 
-    override fun onInterrupt() = restore()
+    override fun onInterrupt() {
+        restore()
+    }
 
     override fun onDestroy() {
         super.onDestroy()
+        shakeHelper?.stop()
+        shakeHelper = null
         restore()
     }
 }

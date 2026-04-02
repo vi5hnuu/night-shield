@@ -49,6 +49,7 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     private var overlayView: ComposeView? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var sleepTimerJob: Job? = null
+    private var shakeHelper: ShakeHelper? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -58,6 +59,19 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         _savedStateRegistryController.performRestore(null)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+
+        // Background shake detection — works even when the app is closed
+        shakeHelper = ShakeHelper(this) {
+            if (NightShieldManager.allowShake.value) {
+                NightShieldManager.tryShakeToggle {
+                    OverlayHelpers.setOverlaysActive(applicationContext, false)
+                    NightShieldManager.setSleepTimer(0)
+                    NightShieldWidgetProvider.updateWidget(applicationContext)
+                    stopSelf()
+                }
+            }
+        }
+        shakeHelper?.start()
 
         // Update overlay interactivity when color picker opens/closes
         serviceScope.launch {
@@ -176,6 +190,8 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     override fun onDestroy() {
         super.onDestroy()
+        shakeHelper?.stop()
+        shakeHelper = null
         sleepTimerJob?.cancel()
         serviceScope.cancel()
         OverlayHelpers.dispose(applicationContext)

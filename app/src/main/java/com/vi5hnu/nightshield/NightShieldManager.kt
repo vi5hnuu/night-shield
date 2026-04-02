@@ -54,6 +54,16 @@ object NightShieldManager {
     val allowShake: StateFlow<Boolean> = _allowShake.asStateFlow()
     fun setAllowShake(value: Boolean) { _allowShake.value = value }
 
+    // Debounce so two services don't double-trigger the same shake event
+    private var lastShakeToggleMs = 0L
+    fun tryShakeToggle(action: () -> Unit) {
+        val now = System.currentTimeMillis()
+        if (now - lastShakeToggleMs > 2000L) {
+            lastShakeToggleMs = now
+            action()
+        }
+    }
+
     // ── Color picker visibility ───────────────────────────────────────────────
     private val _isCanvasColorPickerVisible = MutableStateFlow(false)
     val isCanvasColorPickerVisible: StateFlow<Boolean> = _isCanvasColorPickerVisible.asStateFlow()

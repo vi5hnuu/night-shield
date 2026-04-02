@@ -20,9 +20,11 @@ class OverlayAlarmReceiver : BroadcastReceiver() {
             val serviceIntent = Intent(context, NightShieldService::class.java)
             ContextCompat.startForegroundService(context, serviceIntent)
             OverlayHelpers.setOverlaysActive(context, true)
+            NightShieldWidgetProvider.updateWidget(context)
         } else if (action == ACTION_STOP && isRunning) {
             context.stopService(Intent(context, NightShieldService::class.java))
             OverlayHelpers.setOverlaysActive(context, false)
+            NightShieldWidgetProvider.updateWidget(context)
         }
     }
 }

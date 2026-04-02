@@ -23,6 +23,7 @@ class BootReceiver : BroadcastReceiver() {
                 Intent(context, NightShieldService::class.java)
             )
         }
+        NightShieldWidgetProvider.updateWidget(context)
 
         // Re-schedule any active alarms that were lost on reboot
         val schedules = OverlayHelpers.loadSchedules(context)

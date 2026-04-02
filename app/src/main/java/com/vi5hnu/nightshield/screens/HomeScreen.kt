@@ -905,6 +905,44 @@ private fun PerAppSection() {
         enabledServices.contains(context.packageName, ignoreCase = true)
     }
 
+    var showAccessibilityDialog by remember { mutableStateOf(false) }
+
+    if (showAccessibilityDialog) {
+        AlertDialog(
+            onDismissRequest = { showAccessibilityDialog = false },
+            title = {
+                Text(
+                    "Allow Accessibility Access",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
+            text = {
+                Text(
+                    "Night Shield uses the Accessibility API only to detect which app is in the foreground, " +
+                    "so it can automatically pause or adjust the blue light filter per app.\n\n" +
+                    "It does NOT read any screen content, text, passwords, or personal data.\n\n" +
+                    "Tapping \"Allow\" will open Android Accessibility Settings where you can enable " +
+                    "\"Night Shield\" under Installed Services.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showAccessibilityDialog = false
+                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                }) {
+                    Text("Allow")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showAccessibilityDialog = false }) {
+                    Text("No Thanks")
+                }
+            }
+        )
+    }
+
     if (!accessibilityEnabled) {
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -936,9 +974,7 @@ private fun PerAppSection() {
                     )
                 }
                 TextButton(
-                    onClick = {
-                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                    },
+                    onClick = { showAccessibilityDialog = true },
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
