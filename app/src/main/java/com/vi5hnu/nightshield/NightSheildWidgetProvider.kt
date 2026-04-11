@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.view.View
 import android.widget.RemoteViews
 
 class NightShieldWidgetProvider : AppWidgetProvider() {
@@ -20,8 +21,10 @@ class NightShieldWidgetProvider : AppWidgetProvider() {
                 action = TOGGLE_SHIELD_SIGNAL
                 setClass(context, NightShieldWidgetProvider::class.java)
             }
-
-            val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val pendingIntent = PendingIntent.getBroadcast(
+                context, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
 
             val isRunning = OverlayHelpers.areOverlaysActive(context)
             views.setImageViewResource(
@@ -29,6 +32,27 @@ class NightShieldWidgetProvider : AppWidgetProvider() {
                 if (isRunning) R.drawable.shield_active else R.drawable.shield_inactive
             )
             views.setOnClickPendingIntent(R.id.shieldAction, pendingIntent)
+
+            // Apply widget style (Pro feature — reads saved preference directly)
+            val style = OverlayHelpers.loadWidgetStyle(context)
+            when (style) {
+                NightShieldManager.WidgetStyle.MINIMAL -> {
+                    views.setViewVisibility(R.id.widgetStatusText, View.GONE)
+                    views.setViewVisibility(R.id.widgetIntensityText, View.GONE)
+                }
+                NightShieldManager.WidgetStyle.STANDARD -> {
+                    views.setViewVisibility(R.id.widgetStatusText, View.VISIBLE)
+                    views.setTextViewText(R.id.widgetStatusText, if (isRunning) "ON" else "OFF")
+                    views.setViewVisibility(R.id.widgetIntensityText, View.GONE)
+                }
+                NightShieldManager.WidgetStyle.DETAILED -> {
+                    views.setViewVisibility(R.id.widgetStatusText, View.VISIBLE)
+                    views.setTextViewText(R.id.widgetStatusText, if (isRunning) "ON" else "OFF")
+                    views.setViewVisibility(R.id.widgetIntensityText, View.VISIBLE)
+                    val intensityPct = (OverlayHelpers.loadFilterSettings(context).second * 100).toInt()
+                    views.setTextViewText(R.id.widgetIntensityText, "$intensityPct%")
+                }
+            }
 
             val appWidgetManager = AppWidgetManager.getInstance(context)
             val thisWidget = ComponentName(context, NightShieldWidgetProvider::class.java)

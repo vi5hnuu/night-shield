@@ -18,7 +18,7 @@ fun Tile(
     @DrawableRes id: Int,
     title: String,
     subtitle: String = "",
-    suffix: @Composable () -> Unit,
+    suffix: @Composable () -> Unit = {},
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,

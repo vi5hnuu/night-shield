@@ -129,6 +129,10 @@ object BillingManager {
                 setProCache(context, true)
                 purchases.filter { !it.isAcknowledged }
                     .forEach { acknowledgePurchase(it) }
+            } else {
+                // No valid purchase found (refunded, revoked, or never purchased)
+                ProGate.revoke()
+                setProCache(context, false)
             }
         }
     }

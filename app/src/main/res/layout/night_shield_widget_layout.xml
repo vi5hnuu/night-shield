@@ -1,28 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/night_shield_widget_root"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:background="@android:color/transparent"
+    android:gravity="center"
+    android:orientation="vertical"
     android:padding="4dp">
 
-    <!-- Inactive Icon -->
     <ImageView
         android:id="@+id/shieldAction"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_centerInParent="true"
         android:contentDescription="@string/widget_description"
-        android:src="@drawable/shield_inactive"
-        android:visibility="visible" />
+        android:src="@drawable/shield_inactive" />
 
-<!--    &lt;!&ndash; Active Icon &ndash;&gt;-->
-<!--    <ImageView-->
-<!--        android:id="@+id/widgetButton"-->
-<!--        android:layout_width="60dp"-->
-<!--        android:layout_height="60dp"-->
-<!--        android:layout_centerInParent="true"-->
-<!--        android:contentDescription="Stop Night Shield"-->
-<!--        android:src="@drawable/shield_active"-->
-<!--        android:visibility="gone" />-->
-</RelativeLayout>
+    <!-- STANDARD + DETAILED: ON / OFF label -->
+    <TextView
+        android:id="@+id/widgetStatusText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#FFFFFF"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <!-- DETAILED only: intensity percentage -->
+    <TextView
+        android:id="@+id/widgetIntensityText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#CCFFFFFF"
+        android:textSize="9sp"
+        android:visibility="gone" />
+
+</LinearLayout>

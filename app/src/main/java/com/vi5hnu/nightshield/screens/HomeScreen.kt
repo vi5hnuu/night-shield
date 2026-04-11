@@ -339,27 +339,30 @@ fun HomeScreen(
                             SettingsDivider()
                             val shakeIntensity by NightShieldManager.shakeIntensity.collectAsState()
                             Tile(
-                                id =R.drawable.vibration_24px,
+                                id = R.drawable.vibration_24px,
                                 title = "Shake Sensitivity",
                                 subtitle = "How hard you need to shake",
+                            )
+                            SingleChoiceSegmentedButtonRow(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
                             ) {
-                                SingleChoiceSegmentedButtonRow {
-                                    NightShieldManager.ShakeIntensity.entries.forEachIndexed { index, option ->
-                                        SegmentedButton(
-                                            selected = shakeIntensity == option,
-                                            onClick = { NightShieldManager.setShakeIntensity(option) },
-                                            shape = SegmentedButtonDefaults.itemShape(
-                                                index = index,
-                                                count = NightShieldManager.ShakeIntensity.entries.size,
-                                            ),
-                                            label = {
-                                                Text(
-                                                    option.label,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                )
-                                            },
-                                        )
-                                    }
+                                NightShieldManager.ShakeIntensity.entries.forEachIndexed { index, option ->
+                                    SegmentedButton(
+                                        selected = shakeIntensity == option,
+                                        onClick = { NightShieldManager.setShakeIntensity(option) },
+                                        shape = SegmentedButtonDefaults.itemShape(
+                                            index = index,
+                                            count = NightShieldManager.ShakeIntensity.entries.size,
+                                        ),
+                                        label = {
+                                            Text(
+                                                option.label,
+                                                style = MaterialTheme.typography.labelSmall,
+                                            )
+                                        },
+                                    )
                                 }
                             }
                         }

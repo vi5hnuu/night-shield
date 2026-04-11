@@ -19,26 +19,24 @@ fun FilterOverlay(onTap: () -> Unit) {
     val temporarilyDisabled by NightShieldManager.filterTemporarilyDisabled.collectAsState()
     val gradualFade        by NightShieldManager.gradualFadeEnabled.collectAsState()
 
-    // Target alpha: 0 when paused (per-app), full value otherwise
-    val targetAlpha = if (temporarilyDisabled) 0f else canvasColor.alpha * intensity
-
-    // PRO: When gradual fade is enabled, animate in over 12 s; fade out is instant.
-    // This means transitioning from disabled→enabled feels gentle, while pausing
-    // per-app feels immediate and doesn't confuse the user.
-    val animatedAlpha by animateFloatAsState(
-        targetValue = targetAlpha,
+    // PRO: Gradual fade only animates the on/off transition (0→1 or 1→0).
+    // Intensity and color changes are applied instantly so the slider stays responsive.
+    val fadeMultiplier by animateFloatAsState(
+        targetValue = if (temporarilyDisabled) 0f else 1f,
         animationSpec = when {
             gradualFade && !temporarilyDisabled -> tween(durationMillis = 12_000, easing = LinearEasing)
             else -> snap()
         },
-        label = "filter_alpha",
+        label = "fade_multiplier",
     )
 
-    if (animatedAlpha > 0.01f) {
+    val displayAlpha = canvasColor.alpha * intensity * fadeMultiplier
+
+    if (displayAlpha > 0.01f) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(canvasColor.copy(alpha = animatedAlpha))
+                .background(canvasColor.copy(alpha = displayAlpha))
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
