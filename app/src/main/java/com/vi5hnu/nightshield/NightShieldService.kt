@@ -49,6 +49,7 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     private var overlayView: ComposeView? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var sleepTimerJob: Job? = null
+    private var sunriseJob: Job? = null
     private var shakeHelper: ShakeHelper? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -59,6 +60,8 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         _savedStateRegistryController.performRestore(null)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        UsageTracker.recordStart()
+        bootstrapManagerIfNeeded()
 
         // Background shake detection — works even when the app is closed
         shakeHelper = ShakeHelper(this) {
@@ -102,6 +105,7 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val isSunrise = intent?.getBooleanExtra(EXTRA_SUNRISE, false) ?: false
         showOverlay()
         createNotificationChannel()
         val notification = createNotification()
@@ -110,7 +114,36 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+        if (isSunrise && ProGate.isPro.value) startSunriseMode()
         return START_STICKY
+    }
+
+    /**
+     * PRO — Sunrise Alarm Mode.
+     * Starts the filter at full intensity and gradually fades it out to 0 over
+     * [SUNRISE_DURATION_MS] (default 30 min), then stops the service.
+     * This simulates a natural sunrise: screen gets progressively brighter.
+     */
+    private fun startSunriseMode() {
+        sunriseJob?.cancel()
+        val startIntensity = NightShieldManager.filterIntensity.value.coerceAtLeast(0.8f)
+        NightShieldManager.setFilterIntensity(startIntensity)
+        val startTime = System.currentTimeMillis()
+        sunriseJob = serviceScope.launch {
+            while (true) {
+                val elapsed = System.currentTimeMillis() - startTime
+                if (elapsed >= SUNRISE_DURATION_MS) {
+                    OverlayHelpers.setOverlaysActive(applicationContext, false)
+                    NightShieldWidgetProvider.updateWidget(applicationContext)
+                    stopSelf()
+                    break
+                }
+                val progress = elapsed.toFloat() / SUNRISE_DURATION_MS
+                // Interpolate from startIntensity → 0
+                NightShieldManager.setFilterIntensity(startIntensity * (1f - progress))
+                delay(30_000L)  // update every 30 s — smooth enough, battery-friendly
+            }
+        }
     }
 
     private fun showOverlay() {
@@ -190,9 +223,11 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     override fun onDestroy() {
         super.onDestroy()
+        UsageTracker.recordStop(applicationContext)
         shakeHelper?.stop()
         shakeHelper = null
         sleepTimerJob?.cancel()
+        sunriseJob?.cancel()
         serviceScope.cancel()
         OverlayHelpers.dispose(applicationContext)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
@@ -200,7 +235,23 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         overlayView = null
     }
 
+    /** Hydrates [NightShieldManager] from SharedPreferences on a cold process start. */
+    private fun bootstrapManagerIfNeeded() {
+        val (color, intensity, allowShake) = OverlayHelpers.loadFilterSettings(applicationContext)
+        if (NightShieldManager.canvasColor.value == NightShieldManager.TemperaturePreset.AMBER.color) {
+            // Only override if still at the hardcoded default — means MainActivity never ran
+            NightShieldManager.setCanvasColor(color)
+            NightShieldManager.setFilterIntensity(intensity)
+        }
+        NightShieldManager.setAllowShake(allowShake)
+        NightShieldManager.setShakeIntensity(OverlayHelpers.loadShakeIntensity(applicationContext))
+        NightShieldManager.setGradualFadeEnabled(OverlayHelpers.loadGradualFade(applicationContext))
+        BillingManager.init(applicationContext)
+    }
+
     companion object {
+        const val EXTRA_SUNRISE = "sunrise_mode"
+        private const val SUNRISE_DURATION_MS = 30 * 60 * 1000L  // 30 minutes
         private const val CHANNEL_ID = "night_shield_service_channel"
         private const val CHANNEL_NAME = "Night Shield Service"
         private const val NOTIFICATION_ID = 1234

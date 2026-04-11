@@ -3,7 +3,6 @@ package com.vi5hnu.nightshield.screens
 import android.app.TimePickerDialog
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PowerManager
@@ -49,14 +48,22 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.vi5hnu.nightshield.AppFilterConfig
+import com.vi5hnu.nightshield.BackupHelper
+import com.vi5hnu.nightshield.BillingManager
+import com.vi5hnu.nightshield.FilterProfile
 import com.vi5hnu.nightshield.NightShieldManager
+import com.vi5hnu.nightshield.ProGate
 import com.vi5hnu.nightshield.R
 import com.vi5hnu.nightshield.ScheduleAction
 import com.vi5hnu.nightshield.ScheduleEntry
+import com.vi5hnu.nightshield.UsageTracker
 import com.vi5hnu.nightshield.widgets.ColorDot
 import com.vi5hnu.nightshield.widgets.ColorPicker
 import com.vi5hnu.nightshield.widgets.ShakeDetector
 import com.vi5hnu.nightshield.widgets.Tile
+import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.ui.graphics.toArgb
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,11 +74,28 @@ fun HomeScreen(
     stopOverlays: () -> Unit,
     allowShake: Boolean = true,
     onAllowShake: (Boolean) -> Unit,
-    onPermissionRequest: () -> Unit
+    onPermissionRequest: () -> Unit,
+    isPro: Boolean = false,
+    onPurchase: () -> Unit = {},
+    onRestorePurchase: () -> Unit = {},
+    onExportSettings: () -> Unit = {},
+    onImportSettings: () -> Unit = {},
 ) {
     val context = LocalContext.current
 
-    // Shake detection (gated by allowShake — correctly wired now)
+    // Navigate to UpgradeScreen (full-screen overlay, no Jetpack Nav needed)
+    var showUpgradeScreen by remember { mutableStateOf(false) }
+    if (showUpgradeScreen) {
+        UpgradeScreen(
+            isPro = isPro,
+            onPurchase = onPurchase,
+            onRestorePurchase = onRestorePurchase,
+            onDismiss = { showUpgradeScreen = false },
+        )
+        return
+    }
+
+    // Shake detection (gated by allowShake)
     if (allowShake) {
         ShakeDetector {
             if (areServicesActive) stopOverlays()
@@ -304,6 +328,43 @@ fun HomeScreen(
                     Tile(R.drawable.vibration_24px, stringResource(R.string.shake_toggle_title), stringResource(R.string.shake_toggle_subtitle)) {
                         Switch(checked = allowShake, onCheckedChange = onAllowShake)
                     }
+
+                    // Shake intensity — only visible when shake is enabled
+                    AnimatedVisibility(
+                        visible = allowShake,
+                        enter = expandVertically(),
+                        exit = shrinkVertically(),
+                    ) {
+                        Column {
+                            SettingsDivider()
+                            val shakeIntensity by NightShieldManager.shakeIntensity.collectAsState()
+                            Tile(
+                                id =R.drawable.vibration_24px,
+                                title = "Shake Sensitivity",
+                                subtitle = "How hard you need to shake",
+                            ) {
+                                SingleChoiceSegmentedButtonRow {
+                                    NightShieldManager.ShakeIntensity.entries.forEachIndexed { index, option ->
+                                        SegmentedButton(
+                                            selected = shakeIntensity == option,
+                                            onClick = { NightShieldManager.setShakeIntensity(option) },
+                                            shape = SegmentedButtonDefaults.itemShape(
+                                                index = index,
+                                                count = NightShieldManager.ShakeIntensity.entries.size,
+                                            ),
+                                            label = {
+                                                Text(
+                                                    option.label,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                )
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     SettingsDivider()
 
                     // Color (opens ModalBottomSheet — works when filter is inactive too)
@@ -328,6 +389,24 @@ fun HomeScreen(
                                 activeTrackColor = MaterialTheme.colorScheme.primary
                             )
                         )
+                    }
+                    SettingsDivider()
+
+                    // PRO — Gradual Fade-in
+                    val gradualFade by NightShieldManager.gradualFadeEnabled.collectAsState()
+                    Tile(
+                        id =R.drawable.ic_brightness_24,
+                        title = "Gradual Fade-in",
+                        subtitle = "Filter eases in over 12 s instead of snapping on",
+                    ) {
+                        if (isPro) {
+                            Switch(
+                                checked = gradualFade,
+                                onCheckedChange = { NightShieldManager.setGradualFadeEnabled(it) },
+                            )
+                        } else {
+                            ProBadge { showUpgradeScreen = true }
+                        }
                     }
                 }
 
@@ -363,7 +442,54 @@ fun HomeScreen(
                 SectionHeader(stringResource(R.string.per_app_filter_title))
                 Spacer(Modifier.height(8.dp))
 
-                PerAppSection()
+                PerAppSection(isPro = isPro, onShowUpgrade = { showUpgradeScreen = true })
+
+                Spacer(Modifier.height(24.dp))
+
+                // ── PRO: Saved Profiles ───────────────────────────────────────
+                SectionHeader("Profiles")
+                Spacer(Modifier.height(8.dp))
+                ProfilesSection(isPro = isPro, onShowUpgrade = { showUpgradeScreen = true })
+
+                Spacer(Modifier.height(24.dp))
+
+                // ── PRO: Blue Light Report ────────────────────────────────────
+                SectionHeader("Blue Light Report")
+                Spacer(Modifier.height(8.dp))
+                BlueLightReportSection(isPro = isPro, onShowUpgrade = { showUpgradeScreen = true })
+
+                Spacer(Modifier.height(24.dp))
+
+                // ── PRO: App Theme ────────────────────────────────────────────
+                SectionHeader("App Theme")
+                Spacer(Modifier.height(8.dp))
+                AppThemeSection(isPro = isPro, onShowUpgrade = { showUpgradeScreen = true })
+
+                Spacer(Modifier.height(24.dp))
+
+                // ── PRO: Widget Style ─────────────────────────────────────────
+                SectionHeader("Widget")
+                Spacer(Modifier.height(8.dp))
+                WidgetStyleSection(isPro = isPro, onShowUpgrade = { showUpgradeScreen = true })
+
+                Spacer(Modifier.height(24.dp))
+
+                // ── PRO: Backup & Restore ─────────────────────────────────────
+                SectionHeader("Backup & Restore")
+                Spacer(Modifier.height(8.dp))
+                BackupRestoreSection(
+                    isPro = isPro,
+                    onShowUpgrade = { showUpgradeScreen = true },
+                    onExport = onExportSettings,
+                    onImport = onImportSettings,
+                )
+
+                Spacer(Modifier.height(24.dp))
+
+                // ── PRO: Tasker ───────────────────────────────────────────────
+                SectionHeader("Automation")
+                Spacer(Modifier.height(8.dp))
+                TaskerSection(isPro = isPro, onShowUpgrade = { showUpgradeScreen = true })
 
                 Spacer(Modifier.height(24.dp))
             }
@@ -888,7 +1014,7 @@ private fun BatteryOptBanner(context: Context) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PerAppSection() {
+private fun PerAppSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
     val configs by NightShieldManager.appFilterConfigs.collectAsState()
     val context = LocalContext.current
     var showAppPicker by remember { mutableStateOf(false) }
@@ -1031,6 +1157,8 @@ private fun PerAppSection() {
                 configs.values.forEach { config ->
                     AppConfigRow(
                         config = config,
+                        isPro = isPro,
+                        onShowUpgrade = onShowUpgrade,
                         onUpdate = { NightShieldManager.setAppFilterConfig(it) },
                         onDelete = { NightShieldManager.removeAppFilterConfig(config.packageName) }
                     )
@@ -1061,54 +1189,540 @@ private fun PerAppSection() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppConfigRow(
-    config: com.vi5hnu.nightshield.AppFilterConfig,
-    onUpdate: (com.vi5hnu.nightshield.AppFilterConfig) -> Unit,
-    onDelete: () -> Unit
+    config: AppFilterConfig,
+    isPro: Boolean,
+    onShowUpgrade: () -> Unit,
+    onUpdate: (AppFilterConfig) -> Unit,
+    onDelete: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Icon(
-            painterResource(R.drawable.ic_apps_24),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(22.dp)
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                config.appLabel,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                config.packageName,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-            )
-        }
-        Column(horizontalAlignment = Alignment.End) {
-            Text(
-                stringResource(R.string.per_app_disable_label),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Switch(
-                checked = config.filterDisabled,
-                onCheckedChange = { onUpdate(config.copy(filterDisabled = it)) },
-                modifier = Modifier.padding(vertical = 2.dp)
-            )
-        }
-        IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+    var showColorSheet by remember { mutableStateOf(false) }
+    val globalIntensity by NightShieldManager.filterIntensity.collectAsState()
+    val globalColor by NightShieldManager.canvasColor.collectAsState()
+
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        // ── Primary row ───────────────────────────────────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             Icon(
-                painterResource(R.drawable.ic_delete_24),
-                contentDescription = "Remove",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.size(18.dp)
+                painterResource(R.drawable.ic_apps_24),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp),
             )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    config.appLabel,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    config.packageName,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    stringResource(R.string.per_app_disable_label),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Switch(
+                    checked = config.filterDisabled,
+                    onCheckedChange = { onUpdate(config.copy(filterDisabled = it)) },
+                    modifier = Modifier.padding(vertical = 2.dp),
+                )
+            }
+            IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    painterResource(R.drawable.ic_delete_24),
+                    contentDescription = "Remove",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+
+        // ── PRO: Intensity + Color controls (when filter is not disabled) ─────
+        AnimatedVisibility(visible = !config.filterDisabled) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 34.dp, top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (isPro) {
+                    // Intensity
+                    Text(
+                        "Intensity",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Slider(
+                        value = config.customIntensity ?: globalIntensity,
+                        onValueChange = { onUpdate(config.copy(customIntensity = it)) },
+                        valueRange = 0.1f..1.0f,
+                        modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.secondary,
+                            activeTrackColor = MaterialTheme.colorScheme.secondary,
+                        ),
+                    )
+                    // Color dot
+                    ColorDot(
+                        color = config.customColor ?: globalColor,
+                    ) { showColorSheet = true }
+                } else {
+                    Text(
+                        "Custom intensity & color",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    ProBadge(onClick = onShowUpgrade)
+                }
+            }
+        }
+    }
+
+    // Per-app color picker sheet (Pro)
+    if (showColorSheet && isPro) {
+        ModalBottomSheet(
+            onDismissRequest = { showColorSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surface,
+            dragHandle = null,
+        ) {
+            ColorPicker(
+                initialColor = config.customColor ?: globalColor,
+                onChange = { onUpdate(config.copy(customColor = it)) },
+                onDismiss = { showColorSheet = false },
+            )
+        }
+    }
+}
+
+// ── Pro badge ─────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ProBadge(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(6.dp),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+        contentColor = MaterialTheme.colorScheme.primary,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                painterResource(R.drawable.ic_moon_24),
+                contentDescription = null,
+                modifier = Modifier.size(12.dp),
+            )
+            Text("PRO", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+// ── PRO: Profiles section ──────────────────────────────────────────────────────
+
+@Composable
+private fun ProfilesSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
+    val profiles by NightShieldManager.profiles.collectAsState()
+    val canvasColor by NightShieldManager.canvasColor.collectAsState()
+    val intensity by NightShieldManager.filterIntensity.collectAsState()
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var newProfileName by remember { mutableStateOf("") }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(2.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Text(
+                        "Saved Profiles",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        "Save current filter as a named preset",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (isPro) {
+                    FilledTonalIconButton(onClick = { showSaveDialog = true }) {
+                        Icon(painterResource(R.drawable.ic_add_24), contentDescription = "Save profile")
+                    }
+                } else {
+                    ProBadge(onClick = onShowUpgrade)
+                }
+            }
+
+            if (isPro) {
+                if (profiles.isEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "No profiles yet. Save your current filter settings as a profile.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    Spacer(Modifier.height(12.dp))
+                    profiles.forEach { profile ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(
+                                        ComposeColor(profile.colorArgb).copy(alpha = profile.intensity),
+                                        RoundedCornerShape(8.dp),
+                                    )
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    profile.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    "Intensity ${(profile.intensity * 100).toInt()}%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            // Apply button
+                            FilledTonalButton(
+                                onClick = {
+                                    NightShieldManager.setCanvasColor(ComposeColor(profile.colorArgb))
+                                    NightShieldManager.setFilterIntensity(profile.intensity)
+                                },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            ) {
+                                Text("Apply", style = MaterialTheme.typography.labelMedium)
+                            }
+                            IconButton(
+                                onClick = { NightShieldManager.removeProfile(profile.id) },
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.ic_delete_24),
+                                    contentDescription = "Delete profile",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        }
+                        if (profile != profiles.last()) {
+                            HorizontalDivider(
+                                Modifier.padding(vertical = 2.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                thickness = 0.8.dp,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Save profile dialog
+    if (showSaveDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveDialog = false; newProfileName = "" },
+            title = { Text("Save Profile", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Current: ${(intensity * 100).toInt()}% intensity", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(
+                        value = newProfileName,
+                        onValueChange = { newProfileName = it },
+                        label = { Text("Profile name") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newProfileName.isNotBlank()) {
+                            NightShieldManager.addProfile(
+                                FilterProfile(
+                                    name = newProfileName.trim(),
+                                    colorArgb = canvasColor.toArgb(),
+                                    intensity = intensity,
+                                )
+                            )
+                            newProfileName = ""
+                            showSaveDialog = false
+                        }
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveDialog = false; newProfileName = "" }) { Text("Cancel") }
+            },
+        )
+    }
+}
+
+// ── PRO: Blue Light Report section ────────────────────────────────────────────
+
+@Composable
+private fun BlueLightReportSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
+    val context = LocalContext.current
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(2.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("This Week", style = MaterialTheme.typography.titleMedium)
+                if (!isPro) ProBadge(onClick = onShowUpgrade)
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            if (isPro) {
+                val usage = remember { UsageTracker.getWeeklyUsage(context) }
+                val maxMinutes = usage.maxOfOrNull { it.second }?.coerceAtLeast(1) ?: 1
+                val totalHours = usage.sumOf { it.second } / 60f
+
+                Text(
+                    "%.1f hrs total this week".format(totalHours),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+
+                // Simple bar chart
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    usage.forEach { (date, minutes) ->
+                        val dayLabel = date.takeLast(5)  // "MM-DD"
+                        val barFraction = minutes.toFloat() / maxMinutes
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Bottom,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height((barFraction * 60).dp.coerceAtLeast(2.dp))
+                                    .background(
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.7f + 0.3f * barFraction),
+                                        RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp),
+                                    )
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                dayLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                            Text(
+                                if (minutes >= 60) "${minutes / 60}h" else "${minutes}m",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+            } else {
+                Text(
+                    "Upgrade to Pro to see your daily filter usage and weekly blue light reduction stats.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+// ── PRO: App Theme section ─────────────────────────────────────────────────────
+
+@Composable
+private fun AppThemeSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
+    val currentTheme by NightShieldManager.appTheme.collectAsState()
+    SettingsCard {
+        NightShieldManager.AppTheme.entries.forEachIndexed { index, theme ->
+            Tile(
+                id =R.drawable.ic_moon_24,
+                title = theme.label,
+                subtitle = when (theme) {
+                    NightShieldManager.AppTheme.SYSTEM    -> "Default dark look"
+                    NightShieldManager.AppTheme.DARK_OLED -> "Pure black — saves battery on OLED"
+                    NightShieldManager.AppTheme.WARM      -> "Amber-tinted dark to match the filter"
+                },
+            ) {
+                if (isPro || theme == NightShieldManager.AppTheme.SYSTEM) {
+                    RadioButton(
+                        selected = currentTheme == theme,
+                        onClick = { NightShieldManager.setAppTheme(theme) },
+                    )
+                } else {
+                    ProBadge(onClick = onShowUpgrade)
+                }
+            }
+            if (index < NightShieldManager.AppTheme.entries.lastIndex) SettingsDivider()
+        }
+    }
+}
+
+// ── PRO: Widget Style section ──────────────────────────────────────────────────
+
+@Composable
+private fun WidgetStyleSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
+    val currentStyle by NightShieldManager.widgetStyle.collectAsState()
+    SettingsCard {
+        NightShieldManager.WidgetStyle.entries.forEachIndexed { index, style ->
+            Tile(
+                id =R.drawable.ic_apps_24,
+                title = style.label,
+                subtitle = when (style) {
+                    NightShieldManager.WidgetStyle.STANDARD -> "Icon + toggle button"
+                    NightShieldManager.WidgetStyle.MINIMAL  -> "Icon only — smallest footprint"
+                    NightShieldManager.WidgetStyle.DETAILED -> "Icon + status + intensity"
+                },
+            ) {
+                if (isPro) {
+                    RadioButton(
+                        selected = currentStyle == style,
+                        onClick = { NightShieldManager.setWidgetStyle(style) },
+                    )
+                } else {
+                    ProBadge(onClick = onShowUpgrade)
+                }
+            }
+            if (index < NightShieldManager.WidgetStyle.entries.lastIndex) SettingsDivider()
+        }
+    }
+}
+
+// ── PRO: Backup & Restore section ─────────────────────────────────────────────
+
+@Composable
+private fun BackupRestoreSection(
+    isPro: Boolean,
+    onShowUpgrade: () -> Unit,
+    onExport: () -> Unit,
+    onImport: () -> Unit,
+) {
+    SettingsCard {
+        Tile(
+            id =R.drawable.ic_schedule_24,
+            title = "Export Settings",
+            subtitle = "Save all settings to a JSON file",
+        ) {
+            if (isPro) {
+                FilledTonalButton(
+                    onClick = onExport,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                ) { Text("Export", style = MaterialTheme.typography.labelMedium) }
+            } else {
+                ProBadge(onClick = onShowUpgrade)
+            }
+        }
+        SettingsDivider()
+        Tile(
+            id =R.drawable.ic_schedule_24,
+            title = "Import Settings",
+            subtitle = "Restore settings from a backup file",
+        ) {
+            if (isPro) {
+                FilledTonalButton(
+                    onClick = onImport,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                ) { Text("Import", style = MaterialTheme.typography.labelMedium) }
+            } else {
+                ProBadge(onClick = onShowUpgrade)
+            }
+        }
+    }
+}
+
+// ── PRO: Tasker / Automation section ──────────────────────────────────────────
+
+@Composable
+private fun TaskerSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
+    SettingsCard {
+        Tile(
+            id =R.drawable.ic_schedule_24,
+            title = "Tasker Integration",
+            subtitle = "Automate Night Shield via intents",
+        ) {
+            if (!isPro) ProBadge(onClick = onShowUpgrade)
+        }
+        if (isPro) {
+            SettingsDivider()
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text("Send these broadcast intents from Tasker, Shortcuts, or adb:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
+                listOf(
+                    "ACTION_FILTER_ON" to "Turn filter on",
+                    "ACTION_FILTER_OFF" to "Turn filter off",
+                    "ACTION_FILTER_TOGGLE" to "Toggle filter",
+                ).forEach { (action, desc) ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "com.vi5hnu.nightshield.$action",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(desc, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text("Optional extra: intensity (Float 0.1–1.0)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
@@ -1135,15 +1749,22 @@ private fun AppPickerSheet(
     LaunchedEffect(Unit) {
         val apps = withContext(Dispatchers.IO) {
             val pm = context.packageManager
-            pm.getInstalledApplications(0)
-                .filter { info ->
-                    info.flags and ApplicationInfo.FLAG_SYSTEM == 0 &&
-                    info.packageName != context.packageName
-                }
+            // queryIntentActivities with ACTION_MAIN + CATEGORY_LAUNCHER returns
+            // every app that has a launcher icon, including system apps (Chrome,
+            // Camera, etc.) that getInstalledApplications(0) silently drops on
+            // Android 11+.  The <queries> intent block in the manifest makes this
+            // work without QUERY_ALL_PACKAGES.
+            val launchIntent = Intent(Intent.ACTION_MAIN, null).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+            }
+            pm.queryIntentActivities(launchIntent, PackageManager.MATCH_ALL)
+                .map { it.activityInfo }
+                .distinctBy { it.packageName }
+                .filter { it.packageName != context.packageName }
                 .map { info ->
                     AppInfo(
                         packageName = info.packageName,
-                        label = pm.getApplicationLabel(info).toString()
+                        label = info.loadLabel(pm).toString()
                     )
                 }
                 .sortedBy { it.label.lowercase() }

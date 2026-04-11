@@ -7,7 +7,7 @@ import java.util.UUID
 
 // ── Schedule model ────────────────────────────────────────────────────────────
 
-enum class ScheduleAction { ON, OFF }
+enum class ScheduleAction { ON, OFF, SUNRISE }
 
 data class ScheduleEntry(
     val id: String = UUID.randomUUID().toString(),
@@ -15,6 +15,8 @@ data class ScheduleEntry(
     val minute: Int,
     val action: ScheduleAction,
     val enabled: Boolean = true,
+    /** PRO — for ON action: set filter to this intensity when schedule fires. */
+    val targetIntensity: Float? = null,
 ) {
     val timeString: String get() = "%02d:%02d".format(hour, minute)
 }
@@ -26,6 +28,19 @@ data class AppFilterConfig(
     val appLabel: String = packageName,
     val filterDisabled: Boolean = false,
     val customIntensity: Float? = null,   // null = use global intensity
+    /** PRO — override filter color for this specific app. */
+    val customColor: androidx.compose.ui.graphics.Color? = null,
+)
+
+// ── Saved profile model ───────────────────────────────────────────────────────
+
+/** PRO — A named filter preset that can be saved and recalled instantly. */
+data class FilterProfile(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    /** Stored as ARGB Int to survive serialization without Compose dependency. */
+    val colorArgb: Int,
+    val intensity: Float,
 )
 
 // ── Manager ───────────────────────────────────────────────────────────────────
@@ -50,9 +65,30 @@ object NightShieldManager {
         )
 
     // ── Shake ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Controls how hard/long the user must shake to trigger the toggle.
+     * LOW  = hardest  (threshold 15 m/s², 1200 ms sustained)
+     * MEDIUM = default (threshold 10 m/s², 800 ms)
+     * HIGH = easiest  (threshold  6 m/s², 500 ms)
+     */
+    enum class ShakeIntensity(
+        val threshold: Float,
+        val durationMs: Int,
+        val label: String,
+    ) {
+        LOW(15f, 1200, "Low"),
+        MEDIUM(10f, 800, "Medium"),
+        HIGH(6f, 500, "High"),
+    }
+
     private val _allowShake = MutableStateFlow(true)
     val allowShake: StateFlow<Boolean> = _allowShake.asStateFlow()
     fun setAllowShake(value: Boolean) { _allowShake.value = value }
+
+    private val _shakeIntensity = MutableStateFlow(ShakeIntensity.MEDIUM)
+    val shakeIntensity: StateFlow<ShakeIntensity> = _shakeIntensity.asStateFlow()
+    fun setShakeIntensity(value: ShakeIntensity) { _shakeIntensity.value = value }
 
     // Debounce so two services don't double-trigger the same shake event
     private var lastShakeToggleMs = 0L
@@ -139,6 +175,49 @@ object NightShieldManager {
     fun setAppFilterConfigs(configs: Map<String, AppFilterConfig>) {
         _appFilterConfigs.value = configs
     }
+
+    // ── PRO: Gradual fade-in ───────────────────────────────────────────────────
+    private val _gradualFadeEnabled = MutableStateFlow(false)
+    val gradualFadeEnabled: StateFlow<Boolean> = _gradualFadeEnabled.asStateFlow()
+    fun setGradualFadeEnabled(enabled: Boolean) { _gradualFadeEnabled.value = enabled }
+
+    // ── PRO: Saved profiles ───────────────────────────────────────────────────
+    private val _profiles = MutableStateFlow<List<FilterProfile>>(emptyList())
+    val profiles: StateFlow<List<FilterProfile>> = _profiles.asStateFlow()
+
+    fun addProfile(profile: FilterProfile) {
+        _profiles.value = _profiles.value + profile
+    }
+
+    fun removeProfile(id: String) {
+        _profiles.value = _profiles.value.filter { it.id != id }
+    }
+
+    fun setProfiles(list: List<FilterProfile>) {
+        _profiles.value = list
+    }
+
+    // ── PRO: App theme ────────────────────────────────────────────────────────
+    enum class AppTheme(val label: String) {
+        SYSTEM("System"),
+        DARK_OLED("Dark OLED"),
+        WARM("Warm"),
+    }
+
+    private val _appTheme = MutableStateFlow(AppTheme.SYSTEM)
+    val appTheme: StateFlow<AppTheme> = _appTheme.asStateFlow()
+    fun setAppTheme(theme: AppTheme) { _appTheme.value = theme }
+
+    // ── PRO: Widget style ─────────────────────────────────────────────────────
+    enum class WidgetStyle(val label: String) {
+        STANDARD("Standard"),
+        MINIMAL("Minimal"),
+        DETAILED("Detailed"),
+    }
+
+    private val _widgetStyle = MutableStateFlow(WidgetStyle.STANDARD)
+    val widgetStyle: StateFlow<WidgetStyle> = _widgetStyle.asStateFlow()
+    fun setWidgetStyle(style: WidgetStyle) { _widgetStyle.value = style }
 
     // ── Temperature presets ───────────────────────────────────────────────────
     enum class TemperaturePreset(val color: Color, val label: String, val dotColor: Color) {

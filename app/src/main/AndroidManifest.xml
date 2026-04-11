@@ -108,6 +108,17 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
+        <!-- Tasker / Shortcuts / adb automation receiver (Pro feature) -->
+        <receiver
+            android:name=".TaskerReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.vi5hnu.nightshield.ACTION_FILTER_ON" />
+                <action android:name="com.vi5hnu.nightshield.ACTION_FILTER_OFF" />
+                <action android:name="com.vi5hnu.nightshield.ACTION_FILTER_TOGGLE" />
+            </intent-filter>
+        </receiver>
+
         <!-- AdMob App ID -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"

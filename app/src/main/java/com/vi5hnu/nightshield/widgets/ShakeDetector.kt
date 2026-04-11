@@ -11,14 +11,11 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
+import com.vi5hnu.nightshield.NightShieldManager
 import kotlin.math.sqrt
 
 @Composable
-fun ShakeDetector(
-    minShakeDuration: Int = 800,
-    shakeThreshold: Float = 10f,
-    onShake: () -> Unit
-) {
+fun ShakeDetector(onShake: () -> Unit) {
     val context = LocalContext.current
     val onShakeState = rememberUpdatedState(onShake)
 
@@ -35,8 +32,10 @@ fun ShakeDetector(
                 val (x, y, z) = event.values
                 val acceleration = sqrt(x * x + y * y + z * z) - SensorManager.GRAVITY_EARTH
                 val currentTime = System.currentTimeMillis()
+                // Read dynamically so intensity changes apply without recomposition
+                val intensity = NightShieldManager.shakeIntensity.value
 
-                if (acceleration > shakeThreshold) {
+                if (acceleration > intensity.threshold) {
                     if (!isShaking) {
                         shakeStartTimestamp = currentTime
                         isShaking = true
@@ -45,7 +44,7 @@ fun ShakeDetector(
                 }
 
                 if (isShaking) {
-                    if (currentTime - shakeStartTimestamp >= minShakeDuration) {
+                    if (currentTime - shakeStartTimestamp >= intensity.durationMs) {
                         vibrate(context)
                         onShakeState.value()
                         isShaking = false

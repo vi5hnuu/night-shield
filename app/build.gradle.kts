@@ -35,8 +35,8 @@ android {
         applicationId = "com.vi5hnu.nightshield"
         minSdk = 29
         targetSdk = 35
-        versionCode = 2
-        versionName = "2.0.0"
+        versionCode = 5
+        versionName = "2.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -65,6 +65,12 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+
+    lint {
+        // False positive: fires when registerForActivityResult is used, but this app
+        // extends ComponentActivity (not FragmentActivity), so Fragment version is irrelevant.
+        disable += "InvalidFragmentVersionForActivityResult"
     }
 }
 
@@ -98,4 +104,7 @@ dependencies {
 
     // AdMob
     implementation(libs.play.services.ads)
+
+    // Google Play Billing
+    implementation(libs.billing.ktx)
 }

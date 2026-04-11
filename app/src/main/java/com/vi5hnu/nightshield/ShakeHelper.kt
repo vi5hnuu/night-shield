@@ -14,11 +14,15 @@ import kotlin.math.sqrt
 /**
  * Plain (non-Compose) shake detector for use in background services.
  * Call [start] when the service starts and [stop] when it stops.
+ *
+ * [thresholdProvider] and [durationProvider] are evaluated on every sensor
+ * event so changes to [NightShieldManager.shakeIntensity] take effect
+ * immediately without restarting the service.
  */
 class ShakeHelper(
     private val context: Context,
-    private val minShakeDuration: Int = 800,
-    private val shakeThreshold: Float = 10f,
+    private val thresholdProvider: () -> Float = { NightShieldManager.shakeIntensity.value.threshold },
+    private val durationProvider: () -> Int = { NightShieldManager.shakeIntensity.value.durationMs },
     private val onShake: () -> Unit
 ) {
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -33,8 +37,10 @@ class ShakeHelper(
             val (x, y, z) = event.values
             val acceleration = sqrt(x * x + y * y + z * z) - SensorManager.GRAVITY_EARTH
             val currentTime = System.currentTimeMillis()
+            val threshold = thresholdProvider()
+            val duration = durationProvider()
 
-            if (acceleration > shakeThreshold) {
+            if (acceleration > threshold) {
                 if (!isShaking) {
                     shakeStartTimestamp = currentTime
                     isShaking = true
@@ -43,7 +49,7 @@ class ShakeHelper(
             }
 
             if (isShaking) {
-                if (currentTime - shakeStartTimestamp >= minShakeDuration) {
+                if (currentTime - shakeStartTimestamp >= duration) {
                     vibrate()
                     onShake()
                     isShaking = false

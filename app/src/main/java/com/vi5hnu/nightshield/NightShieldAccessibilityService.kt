@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
+import androidx.compose.ui.graphics.Color
 
 /**
  * Monitors the foreground app and automatically adjusts the filter
@@ -17,8 +18,9 @@ import android.view.accessibility.AccessibilityEvent
 class NightShieldAccessibilityService : AccessibilityService() {
 
     private var lastPackage: String? = null
-    // Stores the global intensity before any per-app override so we can restore it
+    // Stores global settings before any per-app override so we can restore them
     private var savedIntensity: Float? = null
+    private var savedColor: Color? = null
     private var shakeHelper: ShakeHelper? = null
 
     override fun onServiceConnected() {
@@ -30,6 +32,12 @@ class NightShieldAccessibilityService : AccessibilityService() {
             notificationTimeout = 100
             flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
+
+        // Bootstrap NightShieldManager from persisted prefs when the process
+        // starts cold (i.e. the accessibility service is running but the app
+        // was never opened).  Without this, appFilterConfigs is always empty
+        // and the pause-filter feature never fires.
+        bootstrapManagerIfNeeded()
 
         // Full shake toggle (on→off and off→on) via the always-running accessibility service
         shakeHelper = ShakeHelper(applicationContext) {
@@ -64,15 +72,17 @@ class NightShieldAccessibilityService : AccessibilityService() {
     }
 
     private fun applyRuleForPackage(packageName: String) {
-        val configs = NightShieldManager.appFilterConfigs.value
-        val config = configs[packageName]
+        val config = NightShieldManager.appFilterConfigs.value[packageName]
 
         if (config != null) {
-            // Entering a configured app — save global intensity if we haven't already
-            if (config.customIntensity != null && savedIntensity == null) {
+            // Entering a configured app — snapshot global settings once
+            if (savedIntensity == null) {
                 savedIntensity = NightShieldManager.filterIntensity.value
-                NightShieldManager.setFilterIntensity(config.customIntensity)
+                savedColor = NightShieldManager.canvasColor.value
             }
+            config.customIntensity?.let { NightShieldManager.setFilterIntensity(it) }
+            // PRO: per-app custom color
+            config.customColor?.let { NightShieldManager.setCanvasColor(it) }
             NightShieldManager.setFilterTemporarilyDisabled(config.filterDisabled)
         } else {
             // Leaving a configured app — restore everything
@@ -80,12 +90,28 @@ class NightShieldAccessibilityService : AccessibilityService() {
         }
     }
 
+    /**
+     * Loads all persisted settings into [NightShieldManager] when the
+     * process hasn't been through [MainActivity] yet.  Guards are cheap
+     * (empty-map check) so calling this on every connect is safe.
+     */
+    private fun bootstrapManagerIfNeeded() {
+        if (NightShieldManager.appFilterConfigs.value.isEmpty()) {
+            NightShieldManager.setAppFilterConfigs(
+                OverlayHelpers.loadAppConfigs(applicationContext)
+            )
+        }
+        val (_, _, allowShake) = OverlayHelpers.loadFilterSettings(applicationContext)
+        NightShieldManager.setAllowShake(allowShake)
+        NightShieldManager.setShakeIntensity(
+            OverlayHelpers.loadShakeIntensity(applicationContext)
+        )
+    }
+
     private fun restore() {
         NightShieldManager.setFilterTemporarilyDisabled(false)
-        savedIntensity?.let {
-            NightShieldManager.setFilterIntensity(it)
-            savedIntensity = null
-        }
+        savedIntensity?.let { NightShieldManager.setFilterIntensity(it); savedIntensity = null }
+        savedColor?.let { NightShieldManager.setCanvasColor(it); savedColor = null }
     }
 
     override fun onInterrupt() {

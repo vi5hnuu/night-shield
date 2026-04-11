@@ -17,8 +17,13 @@ object OverlayHelpers {
     private const val KEY_COLOR = "canvas_color"
     private const val KEY_INTENSITY = "filter_intensity"
     private const val KEY_ALLOW_SHAKE = "allow_shake"
+    private const val KEY_SHAKE_INTENSITY = "shake_intensity"
+    private const val KEY_GRADUAL_FADE = "gradual_fade_enabled"
+    private const val KEY_APP_THEME = "app_theme"
+    private const val KEY_WIDGET_STYLE = "widget_style"
     private const val KEY_SCHEDULES = "schedules_v2"
     private const val KEY_APP_CONFIGS = "app_filter_configs"
+    private const val KEY_PROFILES = "filter_profiles"
 
     fun setOverlaysActive(context: Context, isActive: Boolean) {
         context.appPrefs().edit { putBoolean(KEY_ACTIVE, isActive) }
@@ -53,10 +58,76 @@ object OverlayHelpers {
         )
     }
 
+    fun saveShakeIntensity(context: Context, intensity: NightShieldManager.ShakeIntensity) {
+        context.appPrefs().edit { putString(KEY_SHAKE_INTENSITY, intensity.name) }
+    }
+
+    fun loadShakeIntensity(context: Context): NightShieldManager.ShakeIntensity {
+        val name = context.appPrefs().getString(KEY_SHAKE_INTENSITY, null)
+        return runCatching {
+            NightShieldManager.ShakeIntensity.valueOf(name ?: "")
+        }.getOrDefault(NightShieldManager.ShakeIntensity.MEDIUM)
+    }
+
+    fun saveGradualFade(context: Context, enabled: Boolean) {
+        context.appPrefs().edit { putBoolean(KEY_GRADUAL_FADE, enabled) }
+    }
+
+    fun loadGradualFade(context: Context): Boolean =
+        context.appPrefs().getBoolean(KEY_GRADUAL_FADE, false)
+
+    fun saveAppTheme(context: Context, theme: NightShieldManager.AppTheme) {
+        context.appPrefs().edit { putString(KEY_APP_THEME, theme.name) }
+    }
+
+    fun loadAppTheme(context: Context): NightShieldManager.AppTheme {
+        val name = context.appPrefs().getString(KEY_APP_THEME, null)
+        return runCatching {
+            NightShieldManager.AppTheme.valueOf(name ?: "")
+        }.getOrDefault(NightShieldManager.AppTheme.SYSTEM)
+    }
+
+    fun saveWidgetStyle(context: Context, style: NightShieldManager.WidgetStyle) {
+        context.appPrefs().edit { putString(KEY_WIDGET_STYLE, style.name) }
+    }
+
+    fun loadWidgetStyle(context: Context): NightShieldManager.WidgetStyle {
+        val name = context.appPrefs().getString(KEY_WIDGET_STYLE, null)
+        return runCatching {
+            NightShieldManager.WidgetStyle.valueOf(name ?: "")
+        }.getOrDefault(NightShieldManager.WidgetStyle.STANDARD)
+    }
+
+    // ── Saved profiles (format: "id|name|colorArgb|intensity") ───────────────
+
+    fun saveProfiles(context: Context, profiles: List<FilterProfile>) {
+        val set = profiles.map { "${it.id}|${it.name}|${it.colorArgb}|${it.intensity}" }.toSet()
+        context.appPrefs().edit { putStringSet(KEY_PROFILES, set) }
+    }
+
+    fun loadProfiles(context: Context): List<FilterProfile> {
+        val set = context.appPrefs().getStringSet(KEY_PROFILES, emptySet()) ?: return emptyList()
+        return set.mapNotNull { entry ->
+            val parts = entry.split("|")
+            if (parts.size < 4) return@mapNotNull null
+            runCatching {
+                FilterProfile(
+                    id = parts[0],
+                    name = parts[1],
+                    colorArgb = parts[2].toInt(),
+                    intensity = parts[3].toFloat(),
+                )
+            }.getOrNull()
+        }.sortedBy { it.name }
+    }
+
     // ── Schedules (serialised as StringSet, format: "id|hour|minute|action|enabled") ──
 
+    // Format: "id|hour|minute|action|enabled|targetIntensity_or_null"
     fun saveSchedules(context: Context, schedules: List<ScheduleEntry>) {
-        val set = schedules.map { "${it.id}|${it.hour}|${it.minute}|${it.action.name}|${it.enabled}" }.toSet()
+        val set = schedules.map {
+            "${it.id}|${it.hour}|${it.minute}|${it.action.name}|${it.enabled}|${it.targetIntensity ?: "null"}"
+        }.toSet()
         context.appPrefs().edit { putStringSet(KEY_SCHEDULES, set) }
     }
 
@@ -71,17 +142,18 @@ object OverlayHelpers {
                     hour = parts[1].toInt(),
                     minute = parts[2].toInt(),
                     action = ScheduleAction.valueOf(parts[3]),
-                    enabled = parts[4].toBooleanStrict()
+                    enabled = parts[4].toBooleanStrict(),
+                    targetIntensity = if (parts.size >= 6 && parts[5] != "null") parts[5].toFloat() else null,
                 )
             }.getOrNull()
         }.sortedWith(compareBy({ it.hour }, { it.minute }))
     }
 
-    // ── Per-app configs (format: "pkg|disabled|intensity_or_null") ──────────────
-
+    // Format: "pkg|appLabel|filterDisabled|customIntensity_or_null|customColorArgb_or_null"
     fun saveAppConfigs(context: Context, configs: Map<String, AppFilterConfig>) {
         val set = configs.values.map {
-            "${it.packageName}|${it.appLabel}|${it.filterDisabled}|${it.customIntensity ?: "null"}"
+            "${it.packageName}|${it.appLabel}|${it.filterDisabled}" +
+            "|${it.customIntensity ?: "null"}|${it.customColor?.toArgb() ?: "null"}"
         }.toSet()
         context.appPrefs().edit { putStringSet(KEY_APP_CONFIGS, set) }
     }
@@ -96,7 +168,9 @@ object OverlayHelpers {
                     packageName = parts[0],
                     appLabel = parts[1],
                     filterDisabled = parts[2].toBooleanStrict(),
-                    customIntensity = if (parts[3] == "null") null else parts[3].toFloat()
+                    customIntensity = if (parts[3] == "null") null else parts[3].toFloat(),
+                    customColor = if (parts.size >= 5 && parts[4] != "null")
+                        Color(parts[4].toInt()) else null,
                 )
             }.getOrNull()
         }.associateBy { it.packageName }
@@ -128,25 +202,45 @@ object AlarmHelpers {
             )
             return
         }
-        val pendingIntent = buildPendingIntent(context, requestCode, entry.action)
+        val pendingIntent = buildPendingIntentWithExtras(context, requestCode, entry)
         val millis = nextMillis(entry.hour, entry.minute)
         alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, pendingIntent)
+    }
+
+    /** Like [buildPendingIntent] but also encodes optional extras from the entry. */
+    private fun buildPendingIntentWithExtras(context: Context, requestCode: Int, entry: ScheduleEntry): PendingIntent {
+        val actionStr = when (entry.action) {
+            ScheduleAction.ON      -> OverlayAlarmReceiver.ACTION_START
+            ScheduleAction.OFF     -> OverlayAlarmReceiver.ACTION_STOP
+            ScheduleAction.SUNRISE -> OverlayAlarmReceiver.ACTION_SUNRISE
+        }
+        val intent = Intent(context, OverlayAlarmReceiver::class.java).apply {
+            putExtra(OverlayAlarmReceiver.EXTRA_ACTION, actionStr)
+            entry.targetIntensity?.let { putExtra(OverlayAlarmReceiver.EXTRA_INTENSITY, it) }
+        }
+        return PendingIntent.getBroadcast(
+            context, requestCode, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
     }
 
     private fun cancelAll(context: Context, count: Int) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         repeat(count) { i ->
-            listOf(ScheduleAction.ON, ScheduleAction.OFF).forEach { action ->
+            ScheduleAction.entries.forEach { action ->
                 am.cancel(buildPendingIntent(context, RC_BASE + i, action))
             }
         }
     }
 
     private fun buildPendingIntent(context: Context, requestCode: Int, action: ScheduleAction): PendingIntent {
+        val actionStr = when (action) {
+            ScheduleAction.ON      -> OverlayAlarmReceiver.ACTION_START
+            ScheduleAction.OFF     -> OverlayAlarmReceiver.ACTION_STOP
+            ScheduleAction.SUNRISE -> OverlayAlarmReceiver.ACTION_SUNRISE
+        }
         val intent = Intent(context, OverlayAlarmReceiver::class.java).apply {
-            putExtra(OverlayAlarmReceiver.EXTRA_ACTION,
-                if (action == ScheduleAction.ON) OverlayAlarmReceiver.ACTION_START
-                else OverlayAlarmReceiver.ACTION_STOP)
+            putExtra(OverlayAlarmReceiver.EXTRA_ACTION, actionStr)
         }
         return PendingIntent.getBroadcast(
             context, requestCode, intent,
