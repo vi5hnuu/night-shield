@@ -106,6 +106,13 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val isSunrise = intent?.getBooleanExtra(EXTRA_SUNRISE, false) ?: false
+
+        // Gradual fade first-use trial: show it once for free so the user experiences the value
+        if (!ProGate.isPro.value && !OverlayHelpers.isFadeTrialDone(this)) {
+            NightShieldManager.setGradualFadeEnabled(true)
+            OverlayHelpers.markFadeTrialDone(this)
+        }
+
         showOverlay()
         createNotificationChannel()
         val notification = createNotification()
@@ -211,14 +218,35 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val intensityPct = (NightShieldManager.filterIntensity.value * 100).toInt()
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_24)
             .setContentTitle(getString(R.string.notification_title))
-            .setContentText(getString(R.string.notification_text))
+            .setContentText("Intensity $intensityPct% · ${getString(R.string.notification_text)}")
             .setContentIntent(openIntent)
             .setOngoing(true)
             .addAction(R.drawable.ic_notification_24, getString(R.string.notification_action_stop), stopIntent)
-            .build()
+
+        // PRO: quick intensity ±10% buttons directly in the notification
+        if (ProGate.isPro.value) {
+            val downIntent = PendingIntent.getBroadcast(
+                this, 10,
+                Intent(this, IntensityActionReceiver::class.java).apply {
+                    action = IntensityActionReceiver.ACTION_DECREASE
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val upIntent = PendingIntent.getBroadcast(
+                this, 11,
+                Intent(this, IntensityActionReceiver::class.java).apply {
+                    action = IntensityActionReceiver.ACTION_INCREASE
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(R.drawable.ic_brightness_24, "−10%", downIntent)
+            builder.addAction(R.drawable.ic_brightness_24, "+10%", upIntent)
+        }
+        return builder.build()
     }
 
     override fun onDestroy() {

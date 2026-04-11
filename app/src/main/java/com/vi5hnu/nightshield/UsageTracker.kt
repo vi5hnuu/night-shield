@@ -38,6 +38,9 @@ object UsageTracker {
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val existing = prefs.getInt("$PREFIX$today", 0)
         prefs.edit().putInt("$PREFIX$today", existing + minutes).apply()
+
+        // Update daily streak (uses OverlayHelpers which has its own prefs)
+        OverlayHelpers.updateStreak(context)
     }
 
     /**

@@ -72,6 +72,72 @@ private val WarmColorScheme = darkColorScheme(
     onError = Color.White,
 )
 
+// ── PRO: Blue Night (deep navy — calm coding / reading vibe) ──────────────────
+
+private val BlueNightColorScheme = darkColorScheme(
+    primary = BlueNightPrimary,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFF1E3A5F),
+    onPrimaryContainer = BlueNightAccent,
+    secondary = CoolCyan,
+    onSecondary = Color.White,
+    tertiary = Color(0xFF93C5FD),
+    onTertiary = Color(0xFF031D4A),
+    background = BlueNightBg,
+    onBackground = TextPrimary,
+    surface = BlueNightCard,
+    onSurface = TextPrimary,
+    surfaceVariant = BlueNightElevated,
+    onSurfaceVariant = Color(0xFF94A3B8),
+    outline = Color(0xFF1E3A5F),
+    error = ErrorRed,
+    onError = Color.White,
+)
+
+// ── PRO: Forest (deep emerald — calm, eye-friendly green) ─────────────────────
+
+private val ForestColorScheme = darkColorScheme(
+    primary = ForestPrimary,
+    onPrimary = Color(0xFF052E16),
+    primaryContainer = Color(0xFF14532D),
+    onPrimaryContainer = ForestAccent,
+    secondary = Color(0xFF4ADE80),
+    onSecondary = Color(0xFF052E16),
+    tertiary = Color(0xFFA3E635),
+    onTertiary = Color(0xFF14532D),
+    background = ForestBg,
+    onBackground = Color(0xFFD1FAE5),
+    surface = ForestCard,
+    onSurface = Color(0xFFD1FAE5),
+    surfaceVariant = ForestElevated,
+    onSurfaceVariant = Color(0xFF6EE7B7),
+    outline = Color(0xFF14532D),
+    error = ErrorRed,
+    onError = Color.White,
+)
+
+// ── PRO: Purple Night (galaxy / AMOLED purple) ────────────────────────────────
+
+private val PurpleNightColorScheme = darkColorScheme(
+    primary = PurplePrimary,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFF3B0764),
+    onPrimaryContainer = PurpleAccent,
+    secondary = Color(0xFFC084FC),
+    onSecondary = Color.White,
+    tertiary = Color(0xFFE879F9),
+    onTertiary = Color(0xFF3B0764),
+    background = PurpleBg,
+    onBackground = Color(0xFFF3E8FF),
+    surface = PurpleCard,
+    onSurface = Color(0xFFF3E8FF),
+    surfaceVariant = PurpleElevated,
+    onSurfaceVariant = Color(0xFFD8B4FE),
+    outline = Color(0xFF3B0764),
+    error = ErrorRed,
+    onError = Color.White,
+)
+
 // ── Composable ────────────────────────────────────────────────────────────────
 
 @Composable
@@ -80,9 +146,12 @@ fun NightShieldTheme(
     content: @Composable () -> Unit,
 ) {
     val colorScheme = when (theme) {
-        NightShieldManager.AppTheme.SYSTEM    -> SystemColorScheme
-        NightShieldManager.AppTheme.DARK_OLED -> OledColorScheme
-        NightShieldManager.AppTheme.WARM      -> WarmColorScheme
+        NightShieldManager.AppTheme.SYSTEM       -> SystemColorScheme
+        NightShieldManager.AppTheme.DARK_OLED    -> OledColorScheme
+        NightShieldManager.AppTheme.WARM         -> WarmColorScheme
+        NightShieldManager.AppTheme.BLUE_NIGHT   -> BlueNightColorScheme
+        NightShieldManager.AppTheme.FOREST       -> ForestColorScheme
+        NightShieldManager.AppTheme.PURPLE_NIGHT -> PurpleNightColorScheme
     }
     MaterialTheme(
         colorScheme = colorScheme,

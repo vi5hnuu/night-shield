@@ -34,7 +34,7 @@
     <string name="permission_required_body">Tap above to grant the overlay permission. Night Shield needs it to display the filter over other apps.</string>
 
     <!-- Footer -->
-    <string name="footer_text">Made with love by Vishnu Kumar</string>
+    <string name="footer_text">© Laxmi Solutions · Crafted with care for your eyes</string>
 
     <!-- Color Picker -->
     <string name="alpha_label">Opacity</string>

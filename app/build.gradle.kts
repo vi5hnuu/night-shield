@@ -107,4 +107,7 @@ dependencies {
 
     // Google Play Billing
     implementation(libs.billing.ktx)
+
+    // In-app review
+    implementation(libs.play.review.ktx)
 }

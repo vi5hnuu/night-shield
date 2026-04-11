@@ -12,10 +12,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
 import androidx.core.content.edit
 import com.google.android.gms.ads.MobileAds
+import com.google.android.play.core.review.ReviewManagerFactory
 import com.vi5hnu.nightshield.screens.HomeScreen
 import com.vi5hnu.nightshield.screens.OnboardingScreen
 import com.vi5hnu.nightshield.ui.theme.NightShieldTheme
-import kotlinx.coroutines.flow.collectLatest
 
 class MainActivity : ComponentActivity() {
 
@@ -63,6 +63,12 @@ class MainActivity : ComponentActivity() {
         MobileAds.initialize(this)
         AppOpenAdManager.loadAd(this)
 
+        // ── First-launch tracking ─────────────────────────────────────────────
+        OverlayHelpers.ensureFirstLaunchRecorded(this)
+
+        // ── Weekly eye-report notification ────────────────────────────────────
+        WeeklyReportWorker.schedule(this)
+
         // ── Billing ───────────────────────────────────────────────────────────
         BillingManager.init(this)
 
@@ -94,9 +100,31 @@ class MainActivity : ComponentActivity() {
             val appTheme by NightShieldManager.appTheme.collectAsState()
             val isPro    by ProGate.isPro.collectAsState()
 
+            // In-app review: request after 7 days + ≥20 min total filter time
+            LaunchedEffect(Unit) {
+                val days  = OverlayHelpers.daysSinceFirstLaunch(applicationContext)
+                val mins  = UsageTracker.weeklyTotalMinutes(applicationContext)
+                val shown = prefs.getBoolean("review_requested", false)
+                if (!shown && days >= 7 && mins >= 20) {
+                    val manager = ReviewManagerFactory.create(this@MainActivity)
+                    manager.requestReviewFlow().addOnSuccessListener { info ->
+                        manager.launchReviewFlow(this@MainActivity, info)
+                        prefs.edit { putBoolean("review_requested", true) }
+                    }
+                }
+            }
+
             NightShieldTheme(theme = appTheme) {
                 var showOnboarding by remember {
                     mutableStateOf(!prefs.getBoolean("onboarding_complete", false))
+                }
+
+                // Contextual upgrade prompt: show once after 3 days OR 30 min of filter use
+                val triggerUpgrade = remember {
+                    val days  = OverlayHelpers.daysSinceFirstLaunch(applicationContext)
+                    val mins  = UsageTracker.weeklyTotalMinutes(applicationContext)
+                    !isPro && !OverlayHelpers.isUpgradePromptShown(applicationContext) &&
+                        (days >= 3 || mins >= 30)
                 }
 
                 if (showOnboarding) {
@@ -106,22 +134,20 @@ class MainActivity : ComponentActivity() {
                     })
                 } else {
                     HomeScreen(
-                        onAllowShake        = { NightShieldManager.setAllowShake(it) },
-                        allowShake          = NightShieldManager.allowShake.collectAsState().value,
-                        areServicesActive   = areServicesRunning.value,
+                        onAllowShake         = { NightShieldManager.setAllowShake(it) },
+                        allowShake           = NightShieldManager.allowShake.collectAsState().value,
+                        areServicesActive    = areServicesRunning.value,
                         hasOverlayPermission = hasOverlayPermission.value,
-                        onPermissionRequest = { requestOverlayPermission() },
-                        launchOverlays      = { launchOverlays() },
-                        stopOverlays        = { stopOverlays() },
-                        isPro               = isPro,
-                        onPurchase          = { BillingManager.purchase(this@MainActivity) },
-                        onRestorePurchase   = { BillingManager.restore(this@MainActivity) },
-                        onExportSettings    = {
-                            createDocumentLauncher.launch("nightshield_backup.json")
-                        },
-                        onImportSettings    = {
-                            openDocumentLauncher.launch(arrayOf("application/json"))
-                        },
+                        onPermissionRequest  = { requestOverlayPermission() },
+                        launchOverlays       = { launchOverlays() },
+                        stopOverlays         = { stopOverlays() },
+                        isPro                = isPro,
+                        triggerUpgradePrompt = triggerUpgrade,
+                        onUpgradePromptShown = { OverlayHelpers.markUpgradePromptShown(applicationContext) },
+                        onPurchase           = { BillingManager.purchase(this@MainActivity) },
+                        onRestorePurchase    = { BillingManager.restore(this@MainActivity) },
+                        onExportSettings     = { createDocumentLauncher.launch("nightshield_backup.json") },
+                        onImportSettings     = { openDocumentLauncher.launch(arrayOf("application/json")) },
                     )
                 }
             }

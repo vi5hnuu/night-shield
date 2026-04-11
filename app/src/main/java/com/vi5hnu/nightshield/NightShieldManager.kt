@@ -202,6 +202,9 @@ object NightShieldManager {
         SYSTEM("System"),
         DARK_OLED("Dark OLED"),
         WARM("Warm"),
+        BLUE_NIGHT("Blue Night"),
+        FOREST("Forest"),
+        PURPLE_NIGHT("Purple Night"),
     }
 
     private val _appTheme = MutableStateFlow(AppTheme.SYSTEM)

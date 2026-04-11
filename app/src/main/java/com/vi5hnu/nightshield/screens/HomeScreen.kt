@@ -42,7 +42,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +55,7 @@ import com.vi5hnu.nightshield.BackupHelper
 import com.vi5hnu.nightshield.BillingManager
 import com.vi5hnu.nightshield.FilterProfile
 import com.vi5hnu.nightshield.NightShieldManager
+import com.vi5hnu.nightshield.OverlayHelpers
 import com.vi5hnu.nightshield.ProGate
 import com.vi5hnu.nightshield.R
 import com.vi5hnu.nightshield.ScheduleAction
@@ -76,6 +79,8 @@ fun HomeScreen(
     onAllowShake: (Boolean) -> Unit,
     onPermissionRequest: () -> Unit,
     isPro: Boolean = false,
+    triggerUpgradePrompt: Boolean = false,
+    onUpgradePromptShown: () -> Unit = {},
     onPurchase: () -> Unit = {},
     onRestorePurchase: () -> Unit = {},
     onExportSettings: () -> Unit = {},
@@ -85,6 +90,35 @@ fun HomeScreen(
 
     // Navigate to UpgradeScreen (full-screen overlay, no Jetpack Nav needed)
     var showUpgradeScreen by remember { mutableStateOf(false) }
+
+    // Contextual upgrade prompt — fires once after sufficient engagement
+    var showUpgradeDialog by remember { mutableStateOf(triggerUpgradePrompt) }
+    if (showUpgradeDialog) {
+        AlertDialog(
+            onDismissRequest = { showUpgradeDialog = false; onUpgradePromptShown() },
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = {
+                Text("Enjoying Night Shield?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            },
+            text = {
+                Text(
+                    "Unlock Smart Profiles, Blue Light Report, Gradual Fade-in and 8 more Pro features — one payment, no subscription, forever yours.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showUpgradeDialog = false; onUpgradePromptShown(); showUpgradeScreen = true },
+                    shape = RoundedCornerShape(10.dp),
+                ) { Text("See Pro Features") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUpgradeDialog = false; onUpgradePromptShown() }) { Text("Not Now") }
+            },
+        )
+    }
+
     if (showUpgradeScreen) {
         UpgradeScreen(
             isPro = isPro,
@@ -103,6 +137,9 @@ fun HomeScreen(
             else onPermissionRequest()
         }
     }
+
+    val haptic = LocalHapticFeedback.current
+    val streakDays: Int = remember { OverlayHelpers.getStreakDays(context) }
 
     // Animations
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -178,6 +215,23 @@ fun HomeScreen(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(2.dp)
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                brush = if (areServicesActive) Brush.verticalGradient(
+                                    listOf(
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                        MaterialTheme.colorScheme.surface.copy(alpha = 0f),
+                                    )
+                                ) else Brush.verticalGradient(
+                                    listOf(
+                                        MaterialTheme.colorScheme.surface,
+                                        MaterialTheme.colorScheme.surface,
+                                    )
+                                )
+                            )
+                    ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -268,11 +322,29 @@ fun HomeScreen(
                             )
                         }
 
+                        // Streak badge — shown when user has ≥2 consecutive active days
+                        if (streakDays >= 2) {
+                            Spacer(Modifier.height(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                            ) {
+                                Text(
+                                    text = "🔥 $streakDays day streak",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                )
+                            }
+                        }
+
                         Spacer(Modifier.height(24.dp))
 
                         // Action button
                         Button(
                             onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 when {
                                     !hasOverlayPermission -> onPermissionRequest()
                                     areServicesActive -> stopOverlays()
@@ -315,6 +387,7 @@ fun HomeScreen(
                             )
                         }
                     }
+                    } // close gradient Box
                 }
 
                 Spacer(Modifier.height(24.dp))
@@ -437,7 +510,7 @@ fun HomeScreen(
                 SectionHeader(stringResource(R.string.schedule_title))
                 Spacer(Modifier.height(8.dp))
 
-                ScheduleSection()
+                ScheduleSection(isPro = isPro, onShowUpgrade = { showUpgradeScreen = true })
 
                 Spacer(Modifier.height(24.dp))
 
@@ -725,10 +798,12 @@ private fun SleepTimerRow() {
 // ── Schedule ──────────────────────────────────────────────────────────────────
 
 @Composable
-private fun ScheduleSection() {
+private fun ScheduleSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
     val context = LocalContext.current
     val schedules by NightShieldManager.schedules.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
+    // Free users get 1 schedule; Pro is unlimited
+    val canAddMore = isPro || schedules.isEmpty()
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -754,8 +829,12 @@ private fun ScheduleSection() {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                FilledTonalIconButton(onClick = { showAddDialog = true }) {
-                    Icon(painterResource(R.drawable.ic_add_24), contentDescription = stringResource(R.string.schedule_add))
+                if (canAddMore) {
+                    FilledTonalIconButton(onClick = { showAddDialog = true }) {
+                        Icon(painterResource(R.drawable.ic_add_24), contentDescription = stringResource(R.string.schedule_add))
+                    }
+                } else {
+                    ProBadge(onClick = onShowUpgrade)
                 }
             }
 
@@ -1246,7 +1325,7 @@ private fun AppConfigRow(
                 Icon(
                     painterResource(R.drawable.ic_delete_24),
                     contentDescription = "Remove",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -1378,6 +1457,80 @@ private fun ProfilesSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
                 } else {
                     ProBadge(onClick = onShowUpgrade)
                 }
+            }
+
+            if (!isPro) {
+                // Show locked preset cards so users see the shape of the value
+                Spacer(Modifier.height(12.dp))
+                data class LockedProfile(val name: String, val subtitle: String, val colorArgb: Int, val intensity: Float)
+                listOf(
+                    LockedProfile("Work Mode",   "Cool blue · low intensity",   0x663ABDE0.toInt(), 0.35f),
+                    LockedProfile("Bedtime",     "Deep amber · high intensity", 0xCCFFA500.toInt(), 0.85f),
+                    LockedProfile("Reading",     "Warm ivory · medium",         0xBBFFCC88.toInt(), 0.55f),
+                    LockedProfile("Movie Night", "Crimson · cinematic",         0xCC8B0000.toInt(), 0.70f),
+                    LockedProfile("Sunrise",     "Rose gold · gentle fade",     0xAAE91E63.toInt(), 0.45f),
+                ).forEachIndexed { index, profile ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(
+                                    Color(profile.colorArgb),
+                                    RoundedCornerShape(10.dp),
+                                )
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                profile.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                            )
+                            Text(
+                                profile.subtitle,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                            )
+                        }
+                        // Intensity pill
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        ) {
+                            Text(
+                                "${(profile.intensity * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            )
+                        }
+                        Icon(
+                            painterResource(R.drawable.ic_moon_24),
+                            contentDescription = "Locked",
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                    if (index < 4) HorizontalDivider(
+                        Modifier.padding(vertical = 2.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        thickness = 0.6.dp,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Upgrade to save your own profiles and instantly switch between them",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
+                )
             }
 
             if (isPro) {
@@ -1522,27 +1675,31 @@ private fun BlueLightReportSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
 
             Spacer(Modifier.height(12.dp))
 
-            if (isPro) {
-                val usage = remember { UsageTracker.getWeeklyUsage(context) }
-                val maxMinutes = usage.maxOfOrNull { it.second }?.coerceAtLeast(1) ?: 1
-                val totalHours = usage.sumOf { it.second } / 60f
+            val usage = remember { UsageTracker.getWeeklyUsage(context) }
+            val maxMinutes = usage.maxOfOrNull { it.second }?.coerceAtLeast(1) ?: 1
 
+            if (isPro) {
+                val totalHours = usage.sumOf { it.second } / 60f
                 Text(
                     "%.1f hrs total this week".format(totalHours),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(12.dp))
+            }
 
-                // Simple bar chart
+            // Bar chart — full for Pro, blurred teaser for free
+            Box {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.Bottom,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    usage.forEach { (date, minutes) ->
-                        val dayLabel = date.takeLast(5)  // "MM-DD"
-                        val barFraction = minutes.toFloat() / maxMinutes
+                    usage.forEachIndexed { index, (date, minutes) ->
+                        val dayLabel = date.takeLast(5)
+                        // Free users only see real data for today (last entry)
+                        val displayMinutes = if (isPro || index == usage.lastIndex) minutes else 30
+                        val barFraction = displayMinutes.toFloat() / maxMinutes.coerceAtLeast(30)
                         Column(
                             modifier = Modifier.weight(1f),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -1553,7 +1710,10 @@ private fun BlueLightReportSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
                                     .fillMaxWidth()
                                     .height((barFraction * 60).dp.coerceAtLeast(2.dp))
                                     .background(
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.7f + 0.3f * barFraction),
+                                        if (isPro || index == usage.lastIndex)
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.7f + 0.3f * barFraction)
+                                        else
+                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f),
                                         RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp),
                                     )
                             )
@@ -1561,24 +1721,41 @@ private fun BlueLightReportSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
                             Text(
                                 dayLabel,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                            )
-                            Text(
-                                if (minutes >= 60) "${minutes / 60}h" else "${minutes}m",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                color = if (isPro || index == usage.lastIndex)
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
                                 maxLines = 1,
                             )
                         }
                     }
                 }
-            } else {
-                Text(
-                    "Upgrade to Pro to see your daily filter usage and weekly blue light reduction stats.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+
+                // Free overlay: lock prompt on top of the greyed bars
+                if (!isPro) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.horizontalGradient(
+                                    0f to MaterialTheme.colorScheme.surface.copy(alpha = 0f),
+                                    0.15f to MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                                )
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "Unlock 7-day history",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            ProBadge(onClick = onShowUpgrade)
+                        }
+                    }
+                }
             }
         }
     }
@@ -1595,9 +1772,12 @@ private fun AppThemeSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
                 id =R.drawable.ic_moon_24,
                 title = theme.label,
                 subtitle = when (theme) {
-                    NightShieldManager.AppTheme.SYSTEM    -> "Default dark look"
-                    NightShieldManager.AppTheme.DARK_OLED -> "Pure black — saves battery on OLED"
-                    NightShieldManager.AppTheme.WARM      -> "Amber-tinted dark to match the filter"
+                    NightShieldManager.AppTheme.SYSTEM       -> "Default deep indigo dark look"
+                    NightShieldManager.AppTheme.DARK_OLED    -> "Pure black — saves battery on OLED"
+                    NightShieldManager.AppTheme.WARM         -> "Amber-tinted dark to match the filter"
+                    NightShieldManager.AppTheme.BLUE_NIGHT   -> "Deep navy — calm coding & reading"
+                    NightShieldManager.AppTheme.FOREST       -> "Emerald green — easy on the eyes"
+                    NightShieldManager.AppTheme.PURPLE_NIGHT -> "Galaxy purple — AMOLED aesthetic"
                 },
             ) {
                 if (isPro || theme == NightShieldManager.AppTheme.SYSTEM) {
@@ -1801,7 +1981,9 @@ private fun AppPickerSheet(
             ) {
                 Text("Choose App", style = MaterialTheme.typography.titleMedium)
                 IconButton(onClick = onDismiss) {
-                    Icon(painterResource(R.drawable.ic_delete_24), contentDescription = "Close", modifier = Modifier.size(20.dp))
+                    Icon(painterResource(R.drawable.ic_close_24), contentDescription = "Close",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(20.dp))
                 }
             }
 

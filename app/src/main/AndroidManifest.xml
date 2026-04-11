@@ -108,6 +108,16 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
+        <!-- Notification intensity quick-action receiver -->
+        <receiver
+            android:name=".IntensityActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.vi5hnu.nightshield.INTENSITY_UP" />
+                <action android:name="com.vi5hnu.nightshield.INTENSITY_DOWN" />
+            </intent-filter>
+        </receiver>
+
         <!-- Tasker / Shortcuts / adb automation receiver (Pro feature) -->
         <receiver
             android:name=".TaskerReceiver"

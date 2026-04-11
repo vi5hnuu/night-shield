@@ -24,6 +24,11 @@ object OverlayHelpers {
     private const val KEY_SCHEDULES = "schedules_v2"
     private const val KEY_APP_CONFIGS = "app_filter_configs"
     private const val KEY_PROFILES = "filter_profiles"
+    private const val KEY_FIRST_LAUNCH_DAY = "first_launch_epoch_day"
+    private const val KEY_LAST_ACTIVE_DAY  = "last_active_epoch_day"
+    private const val KEY_STREAK_DAYS      = "streak_days"
+    private const val KEY_UPGRADE_PROMPT_SHOWN = "upgrade_prompt_shown"
+    private const val KEY_FADE_TRIAL_DONE  = "fade_trial_done"
 
     fun setOverlaysActive(context: Context, isActive: Boolean) {
         context.appPrefs().edit { putBoolean(KEY_ACTIVE, isActive) }
@@ -175,6 +180,63 @@ object OverlayHelpers {
             }.getOrNull()
         }.associateBy { it.packageName }
     }
+
+    // ── Streak & engagement tracking ─────────────────────────────────────────
+
+    /** Called once on first launch to record the install epoch day. */
+    fun ensureFirstLaunchRecorded(context: Context) {
+        val prefs = context.appPrefs()
+        if (!prefs.contains(KEY_FIRST_LAUNCH_DAY)) {
+            prefs.edit { putLong(KEY_FIRST_LAUNCH_DAY, todayEpochDay()) }
+        }
+    }
+
+    fun daysSinceFirstLaunch(context: Context): Int {
+        val first = context.appPrefs().getLong(KEY_FIRST_LAUNCH_DAY, todayEpochDay())
+        return (todayEpochDay() - first).toInt().coerceAtLeast(0)
+    }
+
+    /**
+     * Updates the streak on every session stop.
+     * Consecutive day = last active was exactly yesterday; broken = any larger gap.
+     */
+    fun updateStreak(context: Context) {
+        val prefs  = context.appPrefs()
+        val today  = todayEpochDay()
+        val lastDay = prefs.getLong(KEY_LAST_ACTIVE_DAY, -1L)
+        val streak  = prefs.getInt(KEY_STREAK_DAYS, 0)
+
+        val newStreak = when {
+            lastDay == today     -> streak              // already counted today
+            lastDay == today - 1 -> streak + 1          // consecutive day
+            else                 -> 1                   // gap — restart streak
+        }
+        prefs.edit {
+            putLong(KEY_LAST_ACTIVE_DAY, today)
+            putInt(KEY_STREAK_DAYS, newStreak)
+        }
+    }
+
+    fun getStreakDays(context: Context): Int =
+        context.appPrefs().getInt(KEY_STREAK_DAYS, 0)
+
+    fun getTotalFilterMinutes(context: Context): Int =
+        UsageTracker.getWeeklyUsage(context).sumOf { it.second }
+
+    fun isUpgradePromptShown(context: Context): Boolean =
+        context.appPrefs().getBoolean(KEY_UPGRADE_PROMPT_SHOWN, false)
+
+    fun markUpgradePromptShown(context: Context) =
+        context.appPrefs().edit { putBoolean(KEY_UPGRADE_PROMPT_SHOWN, true) }
+
+    fun isFadeTrialDone(context: Context): Boolean =
+        context.appPrefs().getBoolean(KEY_FADE_TRIAL_DONE, false)
+
+    fun markFadeTrialDone(context: Context) =
+        context.appPrefs().edit { putBoolean(KEY_FADE_TRIAL_DONE, true) }
+
+    private fun todayEpochDay(): Long =
+        java.time.LocalDate.now().toEpochDay()
 
     private fun Context.appPrefs() =
         applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
