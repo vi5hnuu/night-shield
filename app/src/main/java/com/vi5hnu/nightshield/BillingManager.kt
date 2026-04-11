@@ -131,8 +131,11 @@ object BillingManager {
                     .forEach { acknowledgePurchase(it) }
             } else {
                 // No valid purchase found (refunded, revoked, or never purchased)
+                val wasPro = context.billingPrefs().getBoolean(KEY_IS_PRO, false)
                 ProGate.revoke()
                 setProCache(context, false)
+                // Reset Pro-only settings so they don't persist after revocation
+                if (wasPro) OverlayHelpers.enforceFreeLimits(context)
             }
         }
     }

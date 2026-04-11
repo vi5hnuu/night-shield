@@ -235,6 +235,45 @@ object OverlayHelpers {
     fun markFadeTrialDone(context: Context) =
         context.appPrefs().edit { putBoolean(KEY_FADE_TRIAL_DONE, true) }
 
+    /**
+     * Called when Pro is revoked (refund / chargebacked).
+     * Resets any Pro-only setting back to a free-tier default —
+     * both in SharedPreferences and in the live NightShieldManager state.
+     */
+    fun enforceFreeLimits(context: Context) {
+        // 1. Theme → SYSTEM (all non-SYSTEM themes are Pro-only)
+        val currentTheme = loadAppTheme(context)
+        if (currentTheme != NightShieldManager.AppTheme.SYSTEM) {
+            saveAppTheme(context, NightShieldManager.AppTheme.SYSTEM)
+            NightShieldManager.setAppTheme(NightShieldManager.AppTheme.SYSTEM)
+        }
+
+        // 2. Widget style → MINIMAL
+        val currentStyle = loadWidgetStyle(context)
+        if (currentStyle != NightShieldManager.WidgetStyle.MINIMAL) {
+            saveWidgetStyle(context, NightShieldManager.WidgetStyle.MINIMAL)
+            NightShieldManager.setWidgetStyle(NightShieldManager.WidgetStyle.MINIMAL)
+        }
+
+        // 3. Gradual fade → off (Pro-only feature)
+        if (loadGradualFade(context)) {
+            saveGradualFade(context, false)
+            NightShieldManager.setGradualFadeEnabled(false)
+        }
+
+        // 4. Schedules → keep at most 1 (free limit)
+        val schedules = loadSchedules(context)
+        if (schedules.size > 1) {
+            val trimmed = schedules.take(1)
+            saveSchedules(context, trimmed)
+            NightShieldManager.setSchedules(trimmed)
+            AlarmHelpers.scheduleAll(context, trimmed)
+        }
+
+        // 5. Update widget to reflect new style
+        NightShieldWidgetProvider.updateWidget(context)
+    }
+
     private fun todayEpochDay(): Long =
         java.time.LocalDate.now().toEpochDay()
 
