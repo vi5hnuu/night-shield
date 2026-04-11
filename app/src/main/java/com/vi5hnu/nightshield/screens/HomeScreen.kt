@@ -411,31 +411,74 @@ fun HomeScreen(
                         Column {
                             SettingsDivider()
                             val shakeIntensity by NightShieldManager.shakeIntensity.collectAsState()
-                            Tile(
-                                id = R.drawable.vibration_24px,
-                                title = "Shake Sensitivity",
-                                subtitle = "How hard you need to shake",
-                            )
-                            SingleChoiceSegmentedButtonRow(
+                            // Label + hint row
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
-                                NightShieldManager.ShakeIntensity.entries.forEachIndexed { index, option ->
-                                    SegmentedButton(
-                                        selected = shakeIntensity == option,
-                                        onClick = { NightShieldManager.setShakeIntensity(option) },
-                                        shape = SegmentedButtonDefaults.itemShape(
-                                            index = index,
-                                            count = NightShieldManager.ShakeIntensity.entries.size,
-                                        ),
-                                        label = {
+                                Column {
+                                    Text(
+                                        "Shake Sensitivity",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = FontWeight.Medium,
+                                    )
+                                    Text(
+                                        when (shakeIntensity) {
+                                            NightShieldManager.ShakeIntensity.GENTLE -> "Light shake triggers — easy to activate"
+                                            NightShieldManager.ShakeIntensity.NORMAL -> "Moderate shake required"
+                                            NightShieldManager.ShakeIntensity.FIRM   -> "Strong deliberate shake needed"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            // Three-chip selector
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                                    .padding(bottom = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                NightShieldManager.ShakeIntensity.entries.forEach { option ->
+                                    val selected = shakeIntensity == option
+                                    Surface(
+                                        onClick = {
+                                            NightShieldManager.setShakeIntensity(option)
+                                            OverlayHelpers.saveShakeIntensity(context, option)
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (selected) MaterialTheme.colorScheme.primaryContainer
+                                                else MaterialTheme.colorScheme.surfaceVariant,
+                                        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                                       else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(vertical = 10.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                                        ) {
+                                            Text(
+                                                when (option) {
+                                                    NightShieldManager.ShakeIntensity.GENTLE -> "〰️"
+                                                    NightShieldManager.ShakeIntensity.NORMAL -> "〜"
+                                                    NightShieldManager.ShakeIntensity.FIRM   -> "⚡"
+                                                },
+                                                style = MaterialTheme.typography.bodyMedium,
+                                            )
                                             Text(
                                                 option.label,
-                                                style = MaterialTheme.typography.labelSmall,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                                             )
-                                        },
-                                    )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -452,12 +495,20 @@ fun HomeScreen(
                     }
                     SettingsDivider()
 
-                    // Intensity slider
+                    // Intensity slider — persist on drag end so service restart reads correct value
                     val intensity by NightShieldManager.filterIntensity.collectAsState()
                     Tile(R.drawable.ic_brightness_24, stringResource(R.string.filter_intensity_title), stringResource(R.string.filter_intensity_subtitle)) {
                         Slider(
                             value = intensity,
                             onValueChange = { NightShieldManager.setFilterIntensity(it) },
+                            onValueChangeFinished = {
+                                OverlayHelpers.saveFilterSettings(
+                                    context,
+                                    NightShieldManager.canvasColor.value,
+                                    NightShieldManager.filterIntensity.value,
+                                    NightShieldManager.allowShake.value,
+                                )
+                            },
                             valueRange = 0.1f..1.0f,
                             modifier = Modifier.width(120.dp),
                             colors = SliderDefaults.colors(
@@ -478,7 +529,10 @@ fun HomeScreen(
                         if (isPro) {
                             Switch(
                                 checked = gradualFade,
-                                onCheckedChange = { NightShieldManager.setGradualFadeEnabled(it) },
+                                onCheckedChange = {
+                                    NightShieldManager.setGradualFadeEnabled(it)
+                                    OverlayHelpers.saveGradualFade(context, it)
+                                },
                             )
                         } else {
                             ProBadge { showUpgradeScreen = true }
@@ -1459,77 +1513,92 @@ private fun ProfilesSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
                 }
             }
 
+            // Preset templates — visible for ALL users.
+            // Pro: one-tap Apply button.  Free: lock icon + upgrade nudge.
+            Spacer(Modifier.height(12.dp))
             if (!isPro) {
-                // Show locked preset cards so users see the shape of the value
-                Spacer(Modifier.height(12.dp))
-                data class LockedProfile(val name: String, val subtitle: String, val colorArgb: Int, val intensity: Float)
-                listOf(
-                    LockedProfile("Work Mode",   "Cool blue · low intensity",   0x663ABDE0.toInt(), 0.35f),
-                    LockedProfile("Bedtime",     "Deep amber · high intensity", 0xCCFFA500.toInt(), 0.85f),
-                    LockedProfile("Reading",     "Warm ivory · medium",         0xBBFFCC88.toInt(), 0.55f),
-                    LockedProfile("Movie Night", "Crimson · cinematic",         0xCC8B0000.toInt(), 0.70f),
-                    LockedProfile("Sunrise",     "Rose gold · gentle fade",     0xAAE91E63.toInt(), 0.45f),
-                ).forEachIndexed { index, profile ->
-                    Row(
+                Text(
+                    "Starter templates — unlock to apply & save your own",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                )
+            } else {
+                Text(
+                    "Starter templates",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                )
+            }
+            data class PresetProfile(val name: String, val subtitle: String, val colorArgb: Int, val intensity: Float)
+            val presetProfiles = listOf(
+                PresetProfile("Work Mode",   "Cool blue · low intensity",   0x663ABDE0.toInt(), 0.35f),
+                PresetProfile("Bedtime",     "Deep amber · high intensity", 0xCCFFA500.toInt(), 0.85f),
+                PresetProfile("Reading",     "Warm ivory · medium",         0xBBFFCC88.toInt(), 0.55f),
+                PresetProfile("Movie Night", "Crimson · cinematic",         0xCC8B0000.toInt(), 0.70f),
+                PresetProfile("Sunrise",     "Rose gold · gentle fade",     0xAAE91E63.toInt(), 0.45f),
+            )
+            presetProfiles.forEachIndexed { index, profile ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .background(
-                                    Color(profile.colorArgb),
-                                    RoundedCornerShape(10.dp),
-                                )
+                            .size(36.dp)
+                            .background(Color(profile.colorArgb), RoundedCornerShape(10.dp))
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            profile.name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isPro) MaterialTheme.colorScheme.onSurface
+                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                         )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                profile.name,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                            )
-                            Text(
-                                profile.subtitle,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                            )
-                        }
-                        // Intensity pill
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                        ) {
-                            Text(
-                                "${(profile.intensity * 100).toInt()}%",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                            )
-                        }
-                        Icon(
-                            painterResource(R.drawable.ic_moon_24),
-                            contentDescription = "Locked",
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                            modifier = Modifier.size(14.dp),
+                        Text(
+                            profile.subtitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isPro) MaterialTheme.colorScheme.onSurfaceVariant
+                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                         )
                     }
-                    if (index < 4) HorizontalDivider(
-                        Modifier.padding(vertical = 2.dp),
+                    // Intensity pill
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant,
-                        thickness = 0.6.dp,
-                    )
+                    ) {
+                        Text(
+                            "${(profile.intensity * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isPro) MaterialTheme.colorScheme.onSurfaceVariant
+                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        )
+                    }
+                    if (isPro) {
+                        FilledTonalButton(
+                            onClick = {
+                                NightShieldManager.setCanvasColor(ComposeColor(profile.colorArgb))
+                                NightShieldManager.setFilterIntensity(profile.intensity)
+                            },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.height(30.dp),
+                        ) {
+                            Text("Apply", style = MaterialTheme.typography.labelSmall)
+                        }
+                    } else {
+                        ProBadge(onClick = onShowUpgrade)
+                    }
                 }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Upgrade to save your own profiles and instantly switch between them",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center,
+                if (index < presetProfiles.lastIndex) HorizontalDivider(
+                    Modifier.padding(vertical = 2.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    thickness = 0.6.dp,
                 )
             }
 

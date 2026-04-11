@@ -67,26 +67,26 @@ object NightShieldManager {
     // ── Shake ─────────────────────────────────────────────────────────────────
 
     /**
-     * Controls how hard/long the user must shake to trigger the toggle.
-     * LOW  = hardest  (threshold 15 m/s², 1200 ms sustained)
-     * MEDIUM = default (threshold 10 m/s², 800 ms)
-     * HIGH = easiest  (threshold  6 m/s², 500 ms)
+     * Controls how sensitive the shake detection is.
+     * GENTLE = easiest to trigger (low threshold, short duration)
+     * NORMAL = default
+     * FIRM   = hardest to trigger (high threshold, long sustained shake)
      */
     enum class ShakeIntensity(
         val threshold: Float,
         val durationMs: Int,
         val label: String,
     ) {
-        LOW(15f, 1200, "Low"),
-        MEDIUM(10f, 800, "Medium"),
-        HIGH(6f, 500, "High"),
+        GENTLE(6f,  500,  "Gentle"),
+        NORMAL(10f, 800,  "Normal"),
+        FIRM(15f,   1200, "Firm"),
     }
 
     private val _allowShake = MutableStateFlow(true)
     val allowShake: StateFlow<Boolean> = _allowShake.asStateFlow()
     fun setAllowShake(value: Boolean) { _allowShake.value = value }
 
-    private val _shakeIntensity = MutableStateFlow(ShakeIntensity.MEDIUM)
+    private val _shakeIntensity = MutableStateFlow(ShakeIntensity.NORMAL)
     val shakeIntensity: StateFlow<ShakeIntensity> = _shakeIntensity.asStateFlow()
     fun setShakeIntensity(value: ShakeIntensity) { _shakeIntensity.value = value }
 

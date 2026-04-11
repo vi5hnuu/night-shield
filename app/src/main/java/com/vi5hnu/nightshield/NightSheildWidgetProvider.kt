@@ -33,23 +33,29 @@ class NightShieldWidgetProvider : AppWidgetProvider() {
             )
             views.setOnClickPendingIntent(R.id.shieldAction, pendingIntent)
 
-            // Apply widget style (Pro feature — reads saved preference directly)
+            // Apply widget style — floating pill on icon, no harsh strip
             val style = OverlayHelpers.loadWidgetStyle(context)
             when (style) {
                 NightShieldManager.WidgetStyle.MINIMAL -> {
+                    views.setViewVisibility(R.id.widgetTextStrip, View.GONE)
                     views.setViewVisibility(R.id.widgetStatusText, View.GONE)
+                    views.setViewVisibility(R.id.widgetSeparator, View.GONE)
                     views.setViewVisibility(R.id.widgetIntensityText, View.GONE)
                 }
                 NightShieldManager.WidgetStyle.STANDARD -> {
+                    views.setViewVisibility(R.id.widgetTextStrip, View.VISIBLE)
                     views.setViewVisibility(R.id.widgetStatusText, View.VISIBLE)
-                    views.setTextViewText(R.id.widgetStatusText, if (isRunning) "ON" else "OFF")
+                    views.setTextViewText(R.id.widgetStatusText, if (isRunning) "● ON" else "○ OFF")
+                    views.setViewVisibility(R.id.widgetSeparator, View.GONE)
                     views.setViewVisibility(R.id.widgetIntensityText, View.GONE)
                 }
                 NightShieldManager.WidgetStyle.DETAILED -> {
+                    val intensityPct = (OverlayHelpers.loadFilterSettings(context).second * 100).toInt()
+                    views.setViewVisibility(R.id.widgetTextStrip, View.VISIBLE)
                     views.setViewVisibility(R.id.widgetStatusText, View.VISIBLE)
                     views.setTextViewText(R.id.widgetStatusText, if (isRunning) "ON" else "OFF")
+                    views.setViewVisibility(R.id.widgetSeparator, View.VISIBLE)
                     views.setViewVisibility(R.id.widgetIntensityText, View.VISIBLE)
-                    val intensityPct = (OverlayHelpers.loadFilterSettings(context).second * 100).toInt()
                     views.setTextViewText(R.id.widgetIntensityText, "$intensityPct%")
                 }
             }

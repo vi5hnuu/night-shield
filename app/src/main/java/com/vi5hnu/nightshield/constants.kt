@@ -71,7 +71,7 @@ object OverlayHelpers {
         val name = context.appPrefs().getString(KEY_SHAKE_INTENSITY, null)
         return runCatching {
             NightShieldManager.ShakeIntensity.valueOf(name ?: "")
-        }.getOrDefault(NightShieldManager.ShakeIntensity.MEDIUM)
+        }.getOrDefault(NightShieldManager.ShakeIntensity.NORMAL)
     }
 
     fun saveGradualFade(context: Context, enabled: Boolean) {

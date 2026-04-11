@@ -1,37 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/night_shield_widget_root"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
     android:background="@android:color/transparent"
-    android:gravity="center"
-    android:orientation="vertical"
-    android:padding="4dp">
+    android:padding="2dp">
 
     <ImageView
         android:id="@+id/shieldAction"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitCenter"
         android:contentDescription="@string/widget_description"
         android:src="@drawable/shield_inactive" />
 
-    <!-- STANDARD + DETAILED: ON / OFF label -->
-    <TextView
-        android:id="@+id/widgetStatusText"
+    <!--
+        Two separate pills floating above the bottom of the icon,
+        with a gap between them. Each has its own rounded background.
+    -->
+    <LinearLayout
+        android:id="@+id/widgetTextStrip"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="#FFFFFF"
-        android:textSize="10sp"
-        android:textStyle="bold"
-        android:visibility="gone" />
+        android:layout_centerHorizontal="true"
+        android:layout_alignParentBottom="true"
+        android:layout_marginBottom="6dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:visibility="gone">
 
-    <!-- DETAILED only: intensity percentage -->
-    <TextView
-        android:id="@+id/widgetIntensityText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:textColor="#CCFFFFFF"
-        android:textSize="9sp"
-        android:visibility="gone" />
+        <!-- Status pill: ON / OFF -->
+        <TextView
+            android:id="@+id/widgetStatusText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/widget_pill_bg"
+            android:paddingLeft="7dp"
+            android:paddingRight="7dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.05"
+            android:visibility="gone" />
 
-</LinearLayout>
+        <!-- Gap between pills (only shown in DETAILED) — Space is not RemoteViews-safe, use TextView -->
+        <TextView
+            android:id="@+id/widgetSeparator"
+            android:layout_width="5dp"
+            android:layout_height="match_parent"
+            android:text=""
+            android:visibility="gone" />
+
+        <!-- Intensity pill: 75% -->
+        <TextView
+            android:id="@+id/widgetIntensityText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/widget_pill_bg"
+            android:paddingLeft="7dp"
+            android:paddingRight="7dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:textColor="#CCFFFFFF"
+            android:textSize="11sp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+</RelativeLayout>

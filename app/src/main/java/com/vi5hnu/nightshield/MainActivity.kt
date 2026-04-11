@@ -134,7 +134,15 @@ class MainActivity : ComponentActivity() {
                     })
                 } else {
                     HomeScreen(
-                        onAllowShake         = { NightShieldManager.setAllowShake(it) },
+                        onAllowShake         = {
+                            NightShieldManager.setAllowShake(it)
+                            OverlayHelpers.saveFilterSettings(
+                                applicationContext,
+                                NightShieldManager.canvasColor.value,
+                                NightShieldManager.filterIntensity.value,
+                                it,
+                            )
+                        },
                         allowShake           = NightShieldManager.allowShake.collectAsState().value,
                         areServicesActive    = areServicesRunning.value,
                         hasOverlayPermission = hasOverlayPermission.value,

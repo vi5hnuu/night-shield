@@ -86,7 +86,7 @@ object BackupHelper {
         val colorArgb = root.optInt("filterColorArgb", NightShieldManager.TemperaturePreset.AMBER.color.toArgb())
         val intensity = root.optDouble("filterIntensity", 0.6).toFloat()
         val allowShake = root.optBoolean("allowShake", true)
-        val shakeIntensityName = root.optString("shakeIntensity", NightShieldManager.ShakeIntensity.MEDIUM.name)
+        val shakeIntensityName = root.optString("shakeIntensity", NightShieldManager.ShakeIntensity.NORMAL.name)
         val gradualFade = root.optBoolean("gradualFadeEnabled", false)
         val themeName = root.optString("appTheme", NightShieldManager.AppTheme.SYSTEM.name)
         val widgetStyleName = root.optString("widgetStyle", NightShieldManager.WidgetStyle.STANDARD.name)
@@ -96,7 +96,7 @@ object BackupHelper {
         NightShieldManager.setAllowShake(allowShake)
         NightShieldManager.setShakeIntensity(
             runCatching { NightShieldManager.ShakeIntensity.valueOf(shakeIntensityName) }
-                .getOrDefault(NightShieldManager.ShakeIntensity.MEDIUM)
+                .getOrDefault(NightShieldManager.ShakeIntensity.NORMAL)
         )
         NightShieldManager.setGradualFadeEnabled(gradualFade)
         NightShieldManager.setAppTheme(
