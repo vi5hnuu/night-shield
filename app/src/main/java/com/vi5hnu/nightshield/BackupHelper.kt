@@ -130,7 +130,11 @@ object BackupHelper {
                                           else o.getDouble("targetIntensity").toFloat().coerceIn(0.1f, 1.0f),
                     )
                 }.getOrNull()
-            }.let { if (ProGate.isPro.value) it else it.take(1) }
+            }.let { list ->
+                if (ProGate.isPro.value) list
+                // Strip targetIntensity (Pro-only) from the one schedule free users keep
+                else list.take(1).map { s -> s.copy(targetIntensity = null) }
+            }
             NightShieldManager.setSchedules(schedules)
         }
 
@@ -164,7 +168,7 @@ object BackupHelper {
                         id = o.getString("id"),
                         name = o.getString("name"),
                         colorArgb = o.getInt("colorArgb"),
-                        intensity = o.getDouble("intensity").toFloat(),
+                        intensity = o.getDouble("intensity").toFloat().coerceIn(0.1f, 1.0f),
                     )
                 }.getOrNull()
             }

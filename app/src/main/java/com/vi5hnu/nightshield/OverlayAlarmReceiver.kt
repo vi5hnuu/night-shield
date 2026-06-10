@@ -22,21 +22,14 @@ class OverlayAlarmReceiver : BroadcastReceiver() {
 
         when (action) {
             ACTION_START -> if (!isRunning) {
-                // Apply scheduled intensity before starting (pro feature)
-                if (intensity in 0.1f..1.0f) NightShieldManager.setFilterIntensity(intensity)
+                // targetIntensity is Pro-only; guard here as defense-in-depth against stale backup data
+                if (intensity in 0.1f..1.0f && ProGate.isPro.value) NightShieldManager.setFilterIntensity(intensity)
                 startService(context, sunrise = false)
             }
 
             ACTION_STOP -> if (isRunning) stopService(context)
 
-            ACTION_SUNRISE -> {
-                // Sunrise: start if not already running, service handles gradual fade-out
-                if (!isRunning) startService(context, sunrise = true)
-                else {
-                    // Already running — just signal sunrise mode to the running service
-                    startService(context, sunrise = true)
-                }
-            }
+            ACTION_SUNRISE -> startService(context, sunrise = true)
         }
     }
 
