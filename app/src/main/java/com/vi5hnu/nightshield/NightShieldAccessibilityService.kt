@@ -85,8 +85,9 @@ class NightShieldAccessibilityService : AccessibilityService() {
                 NightShieldManager.setFilterIntensity(it)
             } ?: savedIntensity?.let { NightShieldManager.setFilterIntensity(it) }
 
-            // PRO: per-app custom color
-            config.customColor?.let {
+            // PRO: per-app custom color — silently treated as null for free users
+            val effectiveCustomColor = if (ProGate.isPro.value) config.customColor else null
+            effectiveCustomColor?.let {
                 if (savedColor == null) savedColor = NightShieldManager.canvasColor.value
                 NightShieldManager.setCanvasColor(it)
             } ?: savedColor?.let { NightShieldManager.setCanvasColor(it) }

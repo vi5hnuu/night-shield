@@ -183,6 +183,7 @@ object OverlayHelpers {
             // packageName (no '|'), the last 3 fields are fixed-type (Boolean / Float / Int).
             // Everything in between is appLabel, which can contain '|'.
             if (parts.size < 5) return@mapNotNull null
+            if (parts[0].isBlank()) return@mapNotNull null
             runCatching {
                 AppFilterConfig(
                     packageName    = parts[0],
@@ -320,7 +321,15 @@ object OverlayHelpers {
             AlarmHelpers.scheduleAll(context, trimmed)
         }
 
-        // 5. Update widget to reflect new style
+        // 5. Per-app custom colors → stripped (custom color is Pro-only)
+        val appConfigs = loadAppConfigs(context)
+        if (appConfigs.values.any { it.customColor != null }) {
+            val stripped = appConfigs.mapValues { (_, cfg) -> cfg.copy(customColor = null) }
+            saveAppConfigs(context, stripped)
+            NightShieldManager.setAppFilterConfigs(stripped)
+        }
+
+        // 6. Update widget to reflect new style
         NightShieldWidgetProvider.updateWidget(context)
     }
 

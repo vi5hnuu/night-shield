@@ -86,7 +86,7 @@ object BackupHelper {
 
         // Filter settings
         val colorArgb = root.optInt("filterColorArgb", NightShieldManager.TemperaturePreset.AMBER.color.toArgb())
-        val intensity = root.optDouble("filterIntensity", 0.6).toFloat()
+        val intensity = root.optDouble("filterIntensity", 0.6).toFloat().coerceIn(0.1f, 1.0f)
         val allowShake = root.optBoolean("allowShake", true)
         val shakeIntensityName = root.optString("shakeIntensity", NightShieldManager.ShakeIntensity.NORMAL.name)
         val gradualFade = root.optBoolean("gradualFadeEnabled", false)
@@ -127,7 +127,7 @@ object BackupHelper {
                         action = ScheduleAction.valueOf(o.getString("action")),
                         enabled = o.getBoolean("enabled"),
                         targetIntensity = if (o.isNull("targetIntensity")) null
-                                          else o.getDouble("targetIntensity").toFloat(),
+                                          else o.getDouble("targetIntensity").toFloat().coerceIn(0.1f, 1.0f),
                     )
                 }.getOrNull()
             }.let { if (ProGate.isPro.value) it else it.take(1) }
@@ -145,7 +145,7 @@ object BackupHelper {
                         appLabel = o.getString("appLabel"),
                         filterDisabled = o.getBoolean("filterDisabled"),
                         customIntensity = if (o.isNull("customIntensity")) null
-                                          else o.getDouble("customIntensity").toFloat(),
+                                          else o.getDouble("customIntensity").toFloat().coerceIn(0.1f, 1.0f),
                         customColor = if (!ProGate.isPro.value || o.isNull("customColorArgb")) null
                                       else androidx.compose.ui.graphics.Color(o.getInt("customColorArgb")),
                     )

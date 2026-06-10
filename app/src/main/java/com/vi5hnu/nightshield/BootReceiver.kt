@@ -17,6 +17,9 @@ class BootReceiver : BroadcastReceiver() {
             action != "com.htc.intent.action.QUICKBOOT_POWERON"
         ) return
 
+        // Init billing from cache so ProGate.isPro reflects entitlement before we schedule alarms
+        BillingManager.init(context)
+
         if (OverlayHelpers.areOverlaysActive(context) && OverlayHelpers.checkOverlayPermission(context)) {
             ContextCompat.startForegroundService(
                 context,
@@ -25,10 +28,11 @@ class BootReceiver : BroadcastReceiver() {
         }
         NightShieldWidgetProvider.updateWidget(context)
 
-        // Re-schedule any active alarms that were lost on reboot
+        // Re-schedule alarms lost on reboot; respect free-tier cap in case Pro was revoked offline
         val schedules = OverlayHelpers.loadSchedules(context)
-        if (schedules.isNotEmpty()) {
-            AlarmHelpers.scheduleAll(context, schedules)
+        val schedulesToActivate = if (ProGate.isPro.value) schedules else schedules.take(1)
+        if (schedulesToActivate.isNotEmpty()) {
+            AlarmHelpers.scheduleAll(context, schedulesToActivate)
         }
     }
 }
