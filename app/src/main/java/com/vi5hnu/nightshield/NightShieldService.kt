@@ -169,6 +169,8 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         val startTime = System.currentTimeMillis()
         sunriseJob = serviceScope.launch {
             while (true) {
+                // Stop immediately if Pro was revoked mid-animation (e.g., billing refund)
+                if (!ProGate.isPro.value) { stopSelf(); break }
                 val elapsed = System.currentTimeMillis() - startTime
                 if (elapsed >= SUNRISE_DURATION_MS) {
                     OverlayHelpers.setOverlaysActive(applicationContext, false)
@@ -334,7 +336,10 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         serviceScope.cancel()
         OverlayHelpers.dispose(applicationContext)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-        overlayView?.let { windowManager.removeView(it) }
+        // Wrap in try-catch: if overlay permission was revoked while the service was running,
+        // removeView() throws IllegalArgumentException (view not attached), which would abort
+        // onDestroy and leave all subsequent cleanup unexecuted.
+        try { overlayView?.let { windowManager.removeView(it) } } catch (_: Exception) {}
         overlayView = null
     }
 

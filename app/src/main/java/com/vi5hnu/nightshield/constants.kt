@@ -1,5 +1,6 @@
 package com.vi5hnu.nightshield
 
+
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
@@ -28,7 +29,10 @@ object OverlayHelpers {
     private const val KEY_LAST_ACTIVE_DAY  = "last_active_epoch_day"
     private const val KEY_STREAK_DAYS      = "streak_days"
     private const val KEY_UPGRADE_PROMPT_SHOWN = "upgrade_prompt_shown"
-    private const val KEY_FADE_TRIAL_DONE  = "fade_trial_done"
+    private const val KEY_SLEEP_TIMER_END_MS    = "sleep_timer_end_ms"
+    private const val KEY_EYE_BREAK_ENABLED          = "eye_break_enabled"
+    private const val KEY_DARK_MODE_SYNC             = "dark_mode_auto_sync"
+    private const val KEY_BATTERY_BANNER_DISMISSED   = "battery_banner_dismissed"
 
     fun setOverlaysActive(context: Context, isActive: Boolean) {
         context.appPrefs().edit { putBoolean(KEY_ACTIVE, isActive) }
@@ -114,13 +118,16 @@ object OverlayHelpers {
         val set = context.appPrefs().getStringSet(KEY_PROFILES, emptySet()) ?: return emptyList()
         return set.mapNotNull { entry ->
             val parts = entry.split("|")
+            // format: id | ...name... | colorArgb | intensity
+            // id and the last two fields are safe (UUID / Int / Float — never contain '|').
+            // Everything in between is the profile name, which can contain '|'.
             if (parts.size < 4) return@mapNotNull null
             runCatching {
                 FilterProfile(
-                    id = parts[0],
-                    name = parts[1],
-                    colorArgb = parts[2].toInt(),
-                    intensity = parts[3].toFloat(),
+                    id       = parts[0],
+                    name     = parts.subList(1, parts.size - 2).joinToString("|"),
+                    colorArgb = parts[parts.size - 2].toInt(),
+                    intensity = parts[parts.size - 1].toFloat(),
                 )
             }.getOrNull()
         }.sortedBy { it.name }
@@ -142,10 +149,15 @@ object OverlayHelpers {
             val parts = entry.split("|")
             if (parts.size < 5) return@mapNotNull null
             runCatching {
+                val hour   = parts[1].toInt()
+                val minute = parts[2].toInt()
+                // Reject out-of-range values — Calendar would silently roll them over
+                // to the wrong day/time, firing the alarm at an unexpected moment.
+                if (hour !in 0..23 || minute !in 0..59) return@mapNotNull null
                 ScheduleEntry(
                     id = parts[0],
-                    hour = parts[1].toInt(),
-                    minute = parts[2].toInt(),
+                    hour = hour,
+                    minute = minute,
                     action = ScheduleAction.valueOf(parts[3]),
                     enabled = parts[4].toBooleanStrict(),
                     targetIntensity = if (parts.size >= 6 && parts[5] != "null") parts[5].toFloat() else null,
@@ -167,15 +179,17 @@ object OverlayHelpers {
         val set = context.appPrefs().getStringSet(KEY_APP_CONFIGS, emptySet()) ?: return emptyMap()
         return set.mapNotNull { entry ->
             val parts = entry.split("|")
-            if (parts.size < 4) return@mapNotNull null
+            // format: packageName | ...appLabel... | filterDisabled | customIntensity | customColor
+            // packageName (no '|'), the last 3 fields are fixed-type (Boolean / Float / Int).
+            // Everything in between is appLabel, which can contain '|'.
+            if (parts.size < 5) return@mapNotNull null
             runCatching {
                 AppFilterConfig(
-                    packageName = parts[0],
-                    appLabel = parts[1],
-                    filterDisabled = parts[2].toBooleanStrict(),
-                    customIntensity = if (parts[3] == "null") null else parts[3].toFloat(),
-                    customColor = if (parts.size >= 5 && parts[4] != "null")
-                        Color(parts[4].toInt()) else null,
+                    packageName    = parts[0],
+                    appLabel       = parts.subList(1, parts.size - 3).joinToString("|"),
+                    filterDisabled = parts[parts.size - 3].toBooleanStrict(),
+                    customIntensity = parts[parts.size - 2].let { if (it == "null") null else it.toFloat() },
+                    customColor    = parts[parts.size - 1].let { if (it == "null") null else Color(it.toInt()) },
                 )
             }.getOrNull()
         }.associateBy { it.packageName }
@@ -229,11 +243,47 @@ object OverlayHelpers {
     fun markUpgradePromptShown(context: Context) =
         context.appPrefs().edit { putBoolean(KEY_UPGRADE_PROMPT_SHOWN, true) }
 
-    fun isFadeTrialDone(context: Context): Boolean =
-        context.appPrefs().getBoolean(KEY_FADE_TRIAL_DONE, false)
+    // ── Sleep timer persistence ───────────────────────────────────────────────
 
-    fun markFadeTrialDone(context: Context) =
-        context.appPrefs().edit { putBoolean(KEY_FADE_TRIAL_DONE, true) }
+    /** Save the absolute deadline (epoch ms) of the active sleep timer. */
+    fun saveSleepTimerEnd(context: Context, endMs: Long) {
+        context.appPrefs().edit { putLong(KEY_SLEEP_TIMER_END_MS, endMs) }
+    }
+
+    /** Returns the saved deadline, or 0 if none. */
+    fun loadSleepTimerEndMs(context: Context): Long =
+        context.appPrefs().getLong(KEY_SLEEP_TIMER_END_MS, 0L)
+
+    fun clearSleepTimer(context: Context) {
+        context.appPrefs().edit { remove(KEY_SLEEP_TIMER_END_MS) }
+    }
+
+    // ── Eye break reminders ───────────────────────────────────────────────────
+
+    fun saveEyeBreakEnabled(context: Context, enabled: Boolean) {
+        context.appPrefs().edit { putBoolean(KEY_EYE_BREAK_ENABLED, enabled) }
+    }
+
+    fun loadEyeBreakEnabled(context: Context): Boolean =
+        context.appPrefs().getBoolean(KEY_EYE_BREAK_ENABLED, false)
+
+    // ── Dark mode auto-sync ───────────────────────────────────────────────────
+
+    fun saveDarkModeSync(context: Context, enabled: Boolean) {
+        context.appPrefs().edit { putBoolean(KEY_DARK_MODE_SYNC, enabled) }
+    }
+
+    fun loadDarkModeSync(context: Context): Boolean =
+        context.appPrefs().getBoolean(KEY_DARK_MODE_SYNC, false)
+
+    // ── Battery banner dismissal ──────────────────────────────────────────────
+
+    fun saveBatteryBannerDismissed(context: Context) {
+        context.appPrefs().edit { putBoolean(KEY_BATTERY_BANNER_DISMISSED, true) }
+    }
+
+    fun isBatteryBannerDismissed(context: Context): Boolean =
+        context.appPrefs().getBoolean(KEY_BATTERY_BANNER_DISMISSED, false)
 
     /**
      * Called when Pro is revoked (refund / chargebacked).
@@ -248,11 +298,11 @@ object OverlayHelpers {
             NightShieldManager.setAppTheme(NightShieldManager.AppTheme.SYSTEM)
         }
 
-        // 2. Widget style → MINIMAL
+        // 2. Widget style → STANDARD (MINIMAL and DETAILED are Pro-only; free default is STANDARD)
         val currentStyle = loadWidgetStyle(context)
-        if (currentStyle != NightShieldManager.WidgetStyle.MINIMAL) {
-            saveWidgetStyle(context, NightShieldManager.WidgetStyle.MINIMAL)
-            NightShieldManager.setWidgetStyle(NightShieldManager.WidgetStyle.MINIMAL)
+        if (currentStyle != NightShieldManager.WidgetStyle.STANDARD) {
+            saveWidgetStyle(context, NightShieldManager.WidgetStyle.STANDARD)
+            NightShieldManager.setWidgetStyle(NightShieldManager.WidgetStyle.STANDARD)
         }
 
         // 3. Gradual fade → off (Pro-only feature)

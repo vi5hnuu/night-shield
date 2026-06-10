@@ -28,6 +28,8 @@ object BackupHelper {
         root.put("allowShake", allowShake)
         root.put("shakeIntensity", NightShieldManager.shakeIntensity.value.name)
         root.put("gradualFadeEnabled", NightShieldManager.gradualFadeEnabled.value)
+        root.put("eyeBreakEnabled", NightShieldManager.eyeBreakEnabled.value)
+        root.put("darkModeSync", NightShieldManager.darkModeAutoSync.value)
         root.put("appTheme", NightShieldManager.appTheme.value.name)
         root.put("widgetStyle", NightShieldManager.widgetStyle.value.name)
 
@@ -88,6 +90,8 @@ object BackupHelper {
         val allowShake = root.optBoolean("allowShake", true)
         val shakeIntensityName = root.optString("shakeIntensity", NightShieldManager.ShakeIntensity.NORMAL.name)
         val gradualFade = root.optBoolean("gradualFadeEnabled", false)
+        val eyeBreakEnabled = root.optBoolean("eyeBreakEnabled", false)
+        val darkModeSync = root.optBoolean("darkModeSync", false)
         val themeName = root.optString("appTheme", NightShieldManager.AppTheme.SYSTEM.name)
         val widgetStyleName = root.optString("widgetStyle", NightShieldManager.WidgetStyle.STANDARD.name)
 
@@ -98,7 +102,9 @@ object BackupHelper {
             runCatching { NightShieldManager.ShakeIntensity.valueOf(shakeIntensityName) }
                 .getOrDefault(NightShieldManager.ShakeIntensity.NORMAL)
         )
-        NightShieldManager.setGradualFadeEnabled(gradualFade)
+        NightShieldManager.setGradualFadeEnabled(gradualFade && ProGate.isPro.value)
+        NightShieldManager.setEyeBreakEnabled(eyeBreakEnabled)
+        NightShieldManager.setDarkModeAutoSync(darkModeSync)
         NightShieldManager.setAppTheme(
             runCatching { NightShieldManager.AppTheme.valueOf(themeName) }
                 .getOrDefault(NightShieldManager.AppTheme.SYSTEM)
@@ -108,7 +114,7 @@ object BackupHelper {
                 .getOrDefault(NightShieldManager.WidgetStyle.STANDARD)
         )
 
-        // Schedules
+        // Schedules — free tier capped at 1; Pro backup imported by free user must be trimmed
         val schedArr = root.optJSONArray("schedules")
         if (schedArr != null) {
             val schedules = (0 until schedArr.length()).mapNotNull { i ->
@@ -124,11 +130,11 @@ object BackupHelper {
                                           else o.getDouble("targetIntensity").toFloat(),
                     )
                 }.getOrNull()
-            }
+            }.let { if (ProGate.isPro.value) it else it.take(1) }
             NightShieldManager.setSchedules(schedules)
         }
 
-        // Per-app configs
+        // Per-app configs — custom color is Pro-only; strip it on import for free users
         val appsArr = root.optJSONArray("appConfigs")
         if (appsArr != null) {
             val configs = (0 until appsArr.length()).mapNotNull { i ->
@@ -140,7 +146,7 @@ object BackupHelper {
                         filterDisabled = o.getBoolean("filterDisabled"),
                         customIntensity = if (o.isNull("customIntensity")) null
                                           else o.getDouble("customIntensity").toFloat(),
-                        customColor = if (o.isNull("customColorArgb")) null
+                        customColor = if (!ProGate.isPro.value || o.isNull("customColorArgb")) null
                                       else androidx.compose.ui.graphics.Color(o.getInt("customColorArgb")),
                     )
                 }.getOrNull()
@@ -173,7 +179,9 @@ object BackupHelper {
         OverlayHelpers.saveProfiles(context, NightShieldManager.profiles.value)
         OverlayHelpers.saveAppTheme(context, NightShieldManager.appTheme.value)
         OverlayHelpers.saveWidgetStyle(context, NightShieldManager.widgetStyle.value)
-        OverlayHelpers.saveGradualFade(context, gradualFade)
+        OverlayHelpers.saveGradualFade(context, gradualFade && ProGate.isPro.value)
+        OverlayHelpers.saveEyeBreakEnabled(context, eyeBreakEnabled)
+        OverlayHelpers.saveDarkModeSync(context, darkModeSync)
 
         true
     }.getOrDefault(false)
