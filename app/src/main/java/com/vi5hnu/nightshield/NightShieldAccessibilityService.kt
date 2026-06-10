@@ -43,6 +43,7 @@ class NightShieldAccessibilityService : AccessibilityService() {
         shakeHelper = ShakeHelper(applicationContext) {
             if (!NightShieldManager.allowShake.value) return@ShakeHelper
             NightShieldManager.tryShakeToggle {
+                ShakeHelper.hapticFeedback(applicationContext)
                 if (OverlayHelpers.areOverlaysActive(applicationContext)) {
                     applicationContext.stopService(Intent(applicationContext, NightShieldService::class.java))
                     OverlayHelpers.setOverlaysActive(applicationContext, false)
@@ -75,14 +76,21 @@ class NightShieldAccessibilityService : AccessibilityService() {
         val config = NightShieldManager.appFilterConfigs.value[packageName]
 
         if (config != null) {
-            // Entering a configured app — snapshot global settings once
-            if (savedIntensity == null) {
-                savedIntensity = NightShieldManager.filterIntensity.value
-                savedColor = NightShieldManager.canvasColor.value
-            }
-            config.customIntensity?.let { NightShieldManager.setFilterIntensity(it) }
+            // Snapshot only the fields that will actually be overridden, and restore
+            // the baseline when the next app in a configured-app chain doesn't override them.
+            // This prevents App A's custom intensity from leaking into App B when App B
+            // has no customIntensity of its own.
+            config.customIntensity?.let {
+                if (savedIntensity == null) savedIntensity = NightShieldManager.filterIntensity.value
+                NightShieldManager.setFilterIntensity(it)
+            } ?: savedIntensity?.let { NightShieldManager.setFilterIntensity(it) }
+
             // PRO: per-app custom color
-            config.customColor?.let { NightShieldManager.setCanvasColor(it) }
+            config.customColor?.let {
+                if (savedColor == null) savedColor = NightShieldManager.canvasColor.value
+                NightShieldManager.setCanvasColor(it)
+            } ?: savedColor?.let { NightShieldManager.setCanvasColor(it) }
+
             NightShieldManager.setFilterTemporarilyDisabled(config.filterDisabled)
         } else {
             // Leaving a configured app — restore everything

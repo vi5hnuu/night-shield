@@ -5,21 +5,28 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.os.Build
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.vi5hnu.nightshield.NightShieldManager
+import com.vi5hnu.nightshield.ShakeHelper
 import kotlin.math.sqrt
 
+/**
+ * Composable shake detector that is only active while the host Activity is
+ * RESUMED.  On ON_PAUSE the sensor listener is unregistered so this does not
+ * compete with NightShieldService / NightShieldAccessibilityService when the
+ * app moves to the background.
+ */
 @Composable
 fun ShakeDetector(onShake: () -> Unit) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val onShakeState = rememberUpdatedState(onShake)
 
-    DisposableEffect(context) {
+    DisposableEffect(lifecycleOwner) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
@@ -45,8 +52,12 @@ fun ShakeDetector(onShake: () -> Unit) {
 
                 if (isShaking) {
                     if (currentTime - shakeStartTimestamp >= intensity.durationMs) {
-                        vibrate(context)
-                        onShakeState.value()
+                        // Route through the shared dedup gate so this and the service's
+                        // ShakeHelper don't both fire (and vibrate) for the same physical shake.
+                        NightShieldManager.tryShakeToggle {
+                            ShakeHelper.hapticFeedback(context)
+                            onShakeState.value()
+                        }
                         isShaking = false
                     }
                     if (currentTime - lastShakeTimestamp > 300) {
@@ -58,28 +69,21 @@ fun ShakeDetector(onShake: () -> Unit) {
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
 
-        accelerometer?.let {
-            sensorManager.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI)
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> accelerometer?.let {
+                    sensorManager.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI)
+                }
+                Lifecycle.Event.ON_PAUSE -> sensorManager.unregisterListener(listener)
+                else -> {}
+            }
         }
 
-        onDispose { sensorManager.unregisterListener(listener) }
-    }
-}
+        lifecycleOwner.lifecycle.addObserver(observer)
 
-private fun vibrate(context: Context) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-        vm.defaultVibrator.vibrate(
-            VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE)
-        )
-    } else {
-        @Suppress("DEPRECATION")
-        val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
-        } else {
-            @Suppress("DEPRECATION")
-            vibrator.vibrate(80)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            sensorManager.unregisterListener(listener)
         }
     }
 }
