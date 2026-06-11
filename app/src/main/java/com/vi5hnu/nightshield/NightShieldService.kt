@@ -68,6 +68,8 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         UsageTracker.recordStart()
         bootstrapManagerIfNeeded()
+        // Filter is starting — stop the shake monitor that runs when filter is off
+        ShakeMonitorService.stop(applicationContext)
 
         // Background shake detection — works even when the app is closed
         shakeHelper = ShakeHelper(this) {
@@ -335,6 +337,10 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         eyeBreakJob?.cancel()
         serviceScope.cancel()
         OverlayHelpers.dispose(applicationContext)
+        // Update widget immediately so it shows OFF as soon as the service stops
+        NightShieldWidgetProvider.updateWidget(applicationContext)
+        // Restart shake monitor so shake-to-ON works while filter is off
+        ShakeMonitorService.startIfNeeded(applicationContext)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         // Wrap in try-catch: if overlay permission was revoked while the service was running,
         // removeView() throws IllegalArgumentException (view not attached), which would abort

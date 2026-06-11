@@ -62,6 +62,7 @@ class MainActivity : ComponentActivity() {
 
         MobileAds.initialize(this)
         AppOpenAdManager.loadAd(this)
+        InterstitialAdManager.loadAd(this)
 
         // ── First-launch tracking ─────────────────────────────────────────────
         OverlayHelpers.ensureFirstLaunchRecorded(this)
@@ -81,13 +82,15 @@ class MainActivity : ComponentActivity() {
         NightShieldManager.setFilterIntensity(intensity)
         NightShieldManager.setAllowShake(allowShake)
         NightShieldManager.setShakeIntensity(OverlayHelpers.loadShakeIntensity(applicationContext))
-        NightShieldManager.setGradualFadeEnabled(OverlayHelpers.loadGradualFade(applicationContext))
+        NightShieldManager.setGradualFadeEnabled(OverlayHelpers.loadGradualFade(applicationContext) && ProGate.isPro.value)
         NightShieldManager.setAppTheme(OverlayHelpers.loadAppTheme(applicationContext))
         NightShieldManager.setWidgetStyle(OverlayHelpers.loadWidgetStyle(applicationContext))
 
         NightShieldManager.setSchedules(OverlayHelpers.loadSchedules(applicationContext))
         NightShieldManager.setAppFilterConfigs(OverlayHelpers.loadAppConfigs(applicationContext))
         NightShieldManager.setProfiles(OverlayHelpers.loadProfiles(applicationContext))
+        NightShieldManager.setEyeBreakEnabled(OverlayHelpers.loadEyeBreakEnabled(applicationContext))
+        NightShieldManager.setDarkModeAutoSync(OverlayHelpers.loadDarkModeSync(applicationContext))
 
         if (hasOverlayPermission.value && areServicesRunning.value) startOverlayService()
 
@@ -120,7 +123,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // Contextual upgrade prompt: show once after 3 days OR 30 min of filter use
-                val triggerUpgrade = remember {
+                val triggerUpgrade = remember(isPro) {
                     val days  = OverlayHelpers.daysSinceFirstLaunch(applicationContext)
                     val mins  = UsageTracker.weeklyTotalMinutes(applicationContext)
                     !isPro && !OverlayHelpers.isUpgradePromptShown(applicationContext) &&
@@ -174,6 +177,7 @@ class MainActivity : ComponentActivity() {
         OverlayHelpers.setOverlaysActive(this, false)
         areServicesRunning.value = false
         NightShieldManager.setSleepTimer(0)
+        InterstitialAdManager.onFilterStopped(this)
     }
 
     private fun requestOverlayPermission() {
@@ -197,7 +201,19 @@ class MainActivity : ComponentActivity() {
         hasOverlayPermission.value = OverlayHelpers.checkOverlayPermission(applicationContext)
         val active = OverlayHelpers.areOverlaysActive(applicationContext)
         if (active && hasOverlayPermission.value) startOverlayService()
-        areServicesRunning.value = active
+        areServicesRunning.value = active && hasOverlayPermission.value
+
+        // Dark mode auto-sync: auto-enable filter when system switches to dark mode
+        if (NightShieldManager.darkModeAutoSync.value &&
+            !areServicesRunning.value &&
+            hasOverlayPermission.value
+        ) {
+            val nightFlags = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
+            if (nightFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES) {
+                launchOverlays()
+            }
+        }
+
         AppOpenAdManager.showAdIfAvailable(this)
     }
 
@@ -214,12 +230,14 @@ class MainActivity : ComponentActivity() {
             NightShieldManager.allowShake.value,
         )
         OverlayHelpers.saveShakeIntensity(this, NightShieldManager.shakeIntensity.value)
-        OverlayHelpers.saveGradualFade(this, NightShieldManager.gradualFadeEnabled.value)
+        OverlayHelpers.saveGradualFade(this, NightShieldManager.gradualFadeEnabled.value && ProGate.isPro.value)
         OverlayHelpers.saveAppTheme(this, NightShieldManager.appTheme.value)
         OverlayHelpers.saveWidgetStyle(this, NightShieldManager.widgetStyle.value)
         OverlayHelpers.saveSchedules(this, NightShieldManager.schedules.value)
         OverlayHelpers.saveAppConfigs(this, NightShieldManager.appFilterConfigs.value)
         OverlayHelpers.saveProfiles(this, NightShieldManager.profiles.value)
+        OverlayHelpers.saveEyeBreakEnabled(this, NightShieldManager.eyeBreakEnabled.value)
+        OverlayHelpers.saveDarkModeSync(this, NightShieldManager.darkModeAutoSync.value)
         AlarmHelpers.scheduleAll(this, NightShieldManager.schedules.value)
     }
 }

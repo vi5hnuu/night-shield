@@ -19,12 +19,19 @@ fun FilterOverlay(onTap: () -> Unit) {
     val temporarilyDisabled by NightShieldManager.filterTemporarilyDisabled.collectAsState()
     val gradualFade        by NightShieldManager.gradualFadeEnabled.collectAsState()
 
-    // PRO: Gradual fade only animates the on/off transition (0→1 or 1→0).
+    // Starts false so the overlay begins fully transparent on first composition,
+    // then immediately flips to true to trigger the fade-in animation.
+    var overlayMounted by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { overlayMounted = true }
+
+    // PRO: Gradual fade animates both the initial "Activate" (overlayMounted: false→true)
+    // and the accessibility-service temp-disable (temporarilyDisabled: false→true→false).
     // Intensity and color changes are applied instantly so the slider stays responsive.
     val fadeMultiplier by animateFloatAsState(
-        targetValue = if (temporarilyDisabled) 0f else 1f,
+        targetValue = if (!overlayMounted || temporarilyDisabled) 0f else 1f,
         animationSpec = when {
-            gradualFade && !temporarilyDisabled -> tween(durationMillis = 12_000, easing = LinearEasing)
+            gradualFade && overlayMounted && !temporarilyDisabled ->
+                tween(durationMillis = 12_000, easing = LinearEasing)
             else -> snap()
         },
         label = "fade_multiplier",

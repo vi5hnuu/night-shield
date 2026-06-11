@@ -60,7 +60,7 @@ class WeeklyReportWorker(
 
     companion object {
         private const val CHANNEL_ID = "weekly_report_channel"
-        private const val NOTIFICATION_ID = 5678
+        private const val NOTIFICATION_ID = 9012
         private const val WORK_NAME = "weekly_eye_report"
 
         fun schedule(context: Context) {

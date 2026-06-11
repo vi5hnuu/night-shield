@@ -34,5 +34,8 @@ class BootReceiver : BroadcastReceiver() {
         if (schedulesToActivate.isNotEmpty()) {
             AlarmHelpers.scheduleAll(context, schedulesToActivate)
         }
+
+        // Start shake monitor so shake-to-ON works after reboot (filter off at boot)
+        ShakeMonitorService.startIfNeeded(context)
     }
 }

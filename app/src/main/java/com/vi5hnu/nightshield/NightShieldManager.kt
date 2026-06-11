@@ -90,11 +90,13 @@ object NightShieldManager {
     val shakeIntensity: StateFlow<ShakeIntensity> = _shakeIntensity.asStateFlow()
     fun setShakeIntensity(value: ShakeIntensity) { _shakeIntensity.value = value }
 
-    // Debounce so two services don't double-trigger the same shake event
+    // De-duplicates the same shake event reaching two services simultaneously.
+    // Each ShakeHelper has its own 2 s per-helper cooldown, so this only needs
+    // to cover the millisecond gap between two handlers seeing the same event.
     private var lastShakeToggleMs = 0L
     fun tryShakeToggle(action: () -> Unit) {
         val now = System.currentTimeMillis()
-        if (now - lastShakeToggleMs > 2000L) {
+        if (now - lastShakeToggleMs > 500L) {
             lastShakeToggleMs = now
             action()
         }
@@ -221,6 +223,16 @@ object NightShieldManager {
     private val _widgetStyle = MutableStateFlow(WidgetStyle.STANDARD)
     val widgetStyle: StateFlow<WidgetStyle> = _widgetStyle.asStateFlow()
     fun setWidgetStyle(style: WidgetStyle) { _widgetStyle.value = style }
+
+    // ── Eye break reminders (20-20-20 rule) ──────────────────────────────────
+    private val _eyeBreakEnabled = MutableStateFlow(false)
+    val eyeBreakEnabled: StateFlow<Boolean> = _eyeBreakEnabled.asStateFlow()
+    fun setEyeBreakEnabled(enabled: Boolean) { _eyeBreakEnabled.value = enabled }
+
+    // ── Dark mode auto-sync ───────────────────────────────────────────────────
+    private val _darkModeAutoSync = MutableStateFlow(false)
+    val darkModeAutoSync: StateFlow<Boolean> = _darkModeAutoSync.asStateFlow()
+    fun setDarkModeAutoSync(enabled: Boolean) { _darkModeAutoSync.value = enabled }
 
     // ── Temperature presets ───────────────────────────────────────────────────
     enum class TemperaturePreset(val color: Color, val label: String, val dotColor: Color) {

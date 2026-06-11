@@ -49,8 +49,12 @@ class NightShieldAccessibilityService : AccessibilityService() {
                     OverlayHelpers.setOverlaysActive(applicationContext, false)
                     NightShieldManager.setSleepTimer(0)
                 } else if (OverlayHelpers.checkOverlayPermission(applicationContext)) {
-                    OverlayHelpers.setOverlaysActive(applicationContext, true)
-                    applicationContext.startForegroundService(Intent(applicationContext, NightShieldService::class.java))
+                    try {
+                        applicationContext.startForegroundService(Intent(applicationContext, NightShieldService::class.java))
+                        OverlayHelpers.setOverlaysActive(applicationContext, true)
+                    } catch (_: Exception) {
+                        // Background FGS start denied; ShakeMonitorService handles this path
+                    }
                 }
                 NightShieldWidgetProvider.updateWidget(applicationContext)
             }

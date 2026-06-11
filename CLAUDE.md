@@ -14,5 +14,3 @@ Always look for better approach for handling things, consise, precise
 commit after every bug/features implementation
 and commit message should only include whats done and nothing else and never push commits
 do not add message like 'Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>' in commits
-
-design ref : /Users/vishnu/Downloads/shortcuts

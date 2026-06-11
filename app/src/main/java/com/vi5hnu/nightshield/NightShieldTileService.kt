@@ -17,11 +17,14 @@ class NightShieldTileService : TileService() {
         if (isRunning) {
             stopService(Intent(this, NightShieldService::class.java))
             OverlayHelpers.setOverlaysActive(this, false)
-        } else {
-            startForegroundService(Intent(this, NightShieldService::class.java))
-            OverlayHelpers.setOverlaysActive(this, true)
+        } else if (OverlayHelpers.checkOverlayPermission(this)) {
+            try {
+                startForegroundService(Intent(this, NightShieldService::class.java))
+                OverlayHelpers.setOverlaysActive(this, true)
+            } catch (_: Exception) {}
         }
         updateTile()
+        NightShieldWidgetProvider.updateWidget(this)
     }
 
     private fun updateTile() {

@@ -39,7 +39,7 @@ private val COMPARE_ROWS = listOf(
     CompareRow("Blue light filter",   "✓", "✓"),
     CompareRow("Temperature presets", "✓", "✓"),
     CompareRow("Schedule",            "1",  "Unlimited"),
-    CompareRow("Per-app filter",      "✓", "✓ + custom color"),
+    CompareRow("Per-app filter",      "3 apps", "✓ + custom color"),
     CompareRow("Profiles",            "—", "✓"),
     CompareRow("7-day report",        "—", "✓"),
     CompareRow("Gradual fade-in",     "—", "✓"),

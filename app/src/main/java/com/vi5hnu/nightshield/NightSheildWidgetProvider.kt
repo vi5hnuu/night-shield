@@ -68,17 +68,22 @@ class NightShieldWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        val isEnabled=intent.action==AppWidgetManager.ACTION_APPWIDGET_ENABLED;
-        val customSignal=intent.action==TOGGLE_SHIELD_SIGNAL;
-        if (!(intent.action!=null && (isEnabled || customSignal))) return;
+        val action = intent.action ?: return
+        val isEnabled = action == AppWidgetManager.ACTION_APPWIDGET_ENABLED
+        val customSignal = action == TOGGLE_SHIELD_SIGNAL
+        if (!isEnabled && !customSignal) return
         val isRunning = OverlayHelpers.areOverlaysActive(context)
-        if(customSignal){
+        if (customSignal) {
             if (isRunning) {
                 context.stopService(Intent(context, NightShieldService::class.java))
                 OverlayHelpers.setOverlaysActive(context, false)
-            } else {
-                context.startForegroundService(Intent(context, NightShieldService::class.java))
-                OverlayHelpers.setOverlaysActive(context, true)
+            } else if (OverlayHelpers.checkOverlayPermission(context)) {
+                try {
+                    context.startForegroundService(Intent(context, NightShieldService::class.java))
+                    OverlayHelpers.setOverlaysActive(context, true)
+                } catch (_: Exception) {
+                    // Service failed to start; leave state as false so widget shows correct OFF
+                }
             }
         }
         updateWidget(context)
