@@ -21,6 +21,9 @@
     <!-- Haptic feedback on shake -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Keep CPU awake during the 3 s shake-detection window after sig-motion fires -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <!-- Battery optimization prompt -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 

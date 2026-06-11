@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -44,6 +45,13 @@ class ShakeHelper(
     private val sensorManager   = appCtx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val accelerometer   = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     private val sigMotion       = sensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
+    // Held for exactly 3.5 s after sig-motion fires so the CPU stays awake during the
+    // accelerometer confirmation window. Without this, Doze mode puts the CPU to sleep
+    // immediately after the trigger, starving the accelerometer of events.
+    private val wakeLock: PowerManager.WakeLock =
+        (appCtx.getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NightShield:ShakeDetect")
+            .apply { setReferenceCounted(false) }
 
     private val workerThread    = HandlerThread("night-shield-shake").also { it.start() }
     private val workerHandler   = Handler(workerThread.looper)
@@ -118,6 +126,7 @@ class ShakeHelper(
         workerHandler.removeCallbacksAndMessages(null)
         sensorManager.unregisterListener(accelListener)
         sigMotion?.let { runCatching { sensorManager.cancelTriggerSensor(triggerListener, it) } }
+        if (wakeLock.isHeld) runCatching { wakeLock.release() }
         workerThread.quitSafely()
     }
 
@@ -128,8 +137,14 @@ class ShakeHelper(
         if (accelRegistered || stopped) return
         accelRegistered = true
         isShaking = false
+        // Prevent CPU sleep during the detection window. Doze mode would otherwise
+        // put the CPU to sleep immediately after sig-motion fires, so the accelerometer
+        // gets no events and the shake is never confirmed. Auto-timeout at 3.5 s.
+        if (!wakeLock.isHeld) wakeLock.acquire(3500L)
         accelerometer?.let {
-            sensorManager.registerListener(accelListener, it, SensorManager.SENSOR_DELAY_GAME, workerHandler)
+            // maxReportLatencyUs = 0: force immediate event delivery, no batching.
+            // Without this the OS can hold events until the window expires.
+            sensorManager.registerListener(accelListener, it, SensorManager.SENSOR_DELAY_GAME, 0, workerHandler)
         }
         // Auto-expire: 3 s window — sig motion fires at motion START, user may begin
         // deliberate shaking 1+ s later; 1.5 s was too tight in practice.
@@ -141,13 +156,14 @@ class ShakeHelper(
         if (accelRegistered || stopped) return
         accelRegistered = true
         accelerometer?.let {
-            sensorManager.registerListener(accelListener, it, SensorManager.SENSOR_DELAY_GAME, workerHandler)
+            sensorManager.registerListener(accelListener, it, SensorManager.SENSOR_DELAY_GAME, 0, workerHandler)
         }
     }
 
     private fun stopAccelAndRearm(rearmDelayMs: Long) {
         workerHandler.removeCallbacksAndMessages(null)
         sensorManager.unregisterListener(accelListener)
+        if (wakeLock.isHeld) runCatching { wakeLock.release() }
         accelRegistered = false
         isShaking = false
         workerHandler.postDelayed({ rearmTrigger() }, rearmDelayMs)
