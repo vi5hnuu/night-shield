@@ -67,19 +67,18 @@ object NightShieldManager {
     // ── Shake ─────────────────────────────────────────────────────────────────
 
     /**
-     * Controls how sensitive the shake detection is.
-     * GENTLE = easiest to trigger (low threshold, short duration)
-     * NORMAL = default
-     * FIRM   = hardest to trigger (high threshold, long sustained shake)
+     * Controls how sensitive the shake detection is. [threshold] is the total acceleration
+     * magnitude (m/s²) a sample must exceed to count as "accelerating"; a shake fires when ≥3/4
+     * of samples over a ~0.5 s window exceed it. Lower threshold = easier to trigger.
+     * (~1 g = 9.8 m/s² at rest; Normal ≈ 1.3 g, matching Square's Seismic default.)
      */
     enum class ShakeIntensity(
         val threshold: Float,
-        val durationMs: Int,
         val label: String,
     ) {
-        GENTLE(6f,  500,  "Gentle"),
-        NORMAL(10f, 800,  "Normal"),
-        FIRM(15f,   1200, "Firm"),
+        GENTLE(11.5f, "Gentle"),
+        NORMAL(13f,   "Normal"),
+        FIRM(15f,     "Firm"),
     }
 
     private val _allowShake = MutableStateFlow(true)

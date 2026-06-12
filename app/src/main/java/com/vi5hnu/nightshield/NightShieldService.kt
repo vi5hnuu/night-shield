@@ -78,9 +78,9 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         // Filter is starting — stop the shake monitor that runs when filter is off
         ShakeMonitorService.stop(applicationContext)
 
-        // Shake-to-OFF while the filter is on. ShakeHelper is screen-aware (continuous accel when
-        // the screen is on, significant-motion wake-up when off). onDestroy is the single writer
-        // that clears the active flag, refreshes the widget, and restarts the shake monitor.
+        // Shake-to-OFF while the filter is on (continuous-accelerometer Seismic detector).
+        // onDestroy is the single writer that clears the active flag, refreshes the widget,
+        // and restarts the shake monitor.
         shakeHelper = ShakeHelper(this) {
             if (NightShieldManager.allowShake.value) {
                 NightShieldManager.tryShakeToggle {

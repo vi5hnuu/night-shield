@@ -41,10 +41,8 @@ class ShakeMonitorService : Service() {
         }
         bootstrapIfNeeded()
 
-        // ShakeHelper is screen-aware: continuous accelerometer while the screen is on (reliable,
-        // in-app), and a low-power significant-motion wake-up + brief accel window while the
-        // screen is off. The foreground service keeps this process alive so detection survives
-        // OEM background kills.
+        // Continuous accelerometer shake detection (Seismic algorithm). The foreground service
+        // keeps this process alive so shake-to-activate survives OEM background kills.
         shakeHelper = ShakeHelper(this) {
             if (!NightShieldManager.allowShake.value) { stopSelf(); return@ShakeHelper }
             NightShieldManager.tryShakeToggle {
