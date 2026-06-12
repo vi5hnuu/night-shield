@@ -1,6 +1,9 @@
 package com.vi5hnu.nightshield
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -15,25 +18,34 @@ import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import androidx.core.content.ContextCompat
 import kotlin.math.sqrt
 
 /**
- * Shake detector that works reliably in both foreground and background processes.
+ * Shake detector that is reliable both in-app and in the background, with a sensible battery
+ * profile, by adapting its strategy to the screen state.
  *
- * Strategy
- * --------
- * When TYPE_SIGNIFICANT_MOTION is available (API 18+, present on virtually all modern devices):
- *   1. Arm the hardware trigger — zero battery cost until motion is detected.
- *   2. On trigger, open a 3 s accelerometer window to verify a deliberate shake, then re-arm.
+ * Why screen-aware
+ * ----------------
+ * A *deliberate shake* can only be detected by reading the accelerometer continuously and watching
+ * for the threshold-crossing pattern. TYPE_SIGNIFICANT_MOTION is NOT a shake detector — it is tuned
+ * to detect motion that changes the user's location (walking, getting in a car) and is deliberately
+ * insensitive to brief in-hand movement, so it frequently does not fire on a shake.
  *
- * Hardware trigger sensors are NOT throttled in the background (Android docs). This bypasses the
- * core problem: background accelerometer access is limited to 5 Hz on Android 9+ and is blocked
- * entirely by many OEMs when no foreground service is running.
+ * But a continuous accelerometer only works while the CPU is awake. A foreground service keeps the
+ * *process* alive, not the *CPU* — with the screen off the device suspends and a normal accelerometer
+ * is starved of events. Running it anyway (with a wake lock) drains 5–10%/hour.
  *
- * Fallback (no significant-motion hardware): always-on accelerometer. This path is fine for
- * foreground services which have unrestricted sensor access regardless of Android version.
+ * So:
+ *   - Screen ON  → continuous accelerometer. Reliable; the screen already dominates power draw.
+ *   - Screen OFF → arm TYPE_SIGNIFICANT_MOTION (a low-power hardware wake-up sensor). When the user
+ *                  picks up / shakes the phone it fires, we briefly hold a wake lock and open an
+ *                  accelerometer window to confirm the shake, then re-arm. Near-zero idle cost.
  *
- * All sensor work runs on a dedicated HandlerThread — the main thread is never blocked.
+ * Fallback (device without significant-motion hardware): continuous accelerometer in both states.
+ *
+ * All sensor work runs on a dedicated HandlerThread; mode transitions are posted there too, so the
+ * internal state is only ever touched on one thread.
  */
 class ShakeHelper(
     context: Context,
@@ -41,33 +53,40 @@ class ShakeHelper(
     private val durationProvider: () -> Int    = { NightShieldManager.shakeIntensity.value.durationMs },
     private val onShake: () -> Unit,
 ) {
-    private val appCtx          = context.applicationContext
-    private val sensorManager   = appCtx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-    private val accelerometer   = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-    private val sigMotion       = sensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
-    // Held for exactly 3.5 s after sig-motion fires so the CPU stays awake during the
-    // accelerometer confirmation window. Without this, Doze mode puts the CPU to sleep
-    // immediately after the trigger, starving the accelerometer of events.
+    private val appCtx        = context.applicationContext
+    private val sensorManager = appCtx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    private val powerManager  = appCtx.getSystemService(Context.POWER_SERVICE) as PowerManager
+    private val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    private val sigMotion     = sensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
+
+    // Held only for the brief screen-off confirmation window so the CPU stays awake long enough to
+    // read the accelerometer after a significant-motion trigger. Auto-times out as a safety net.
     private val wakeLock: PowerManager.WakeLock =
-        (appCtx.getSystemService(Context.POWER_SERVICE) as PowerManager)
-            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NightShield:ShakeDetect")
+        powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NightShield:ShakeDetect")
             .apply { setReferenceCounted(false) }
 
-    private val workerThread    = HandlerThread("night-shield-shake").also { it.start() }
-    private val workerHandler   = Handler(workerThread.looper)
-    private val mainHandler     = Handler(Looper.getMainLooper())
+    private val workerThread  = HandlerThread("night-shield-shake").also { it.start() }
+    private val workerHandler = Handler(workerThread.looper)
+    private val mainHandler   = Handler(Looper.getMainLooper())
 
-    // Only accessed on workerThread (no volatile needed)
-    private var accelRegistered    = false
-    private var isShaking          = false
-    private var shakeStartMs       = 0L
-    private var lastShakeMs        = 0L
-    private var lastFireMs         = 0L
+    /** CONTINUOUS = accel always on (screen on / no sig-motion). ARMED = waiting on sig-motion
+     *  (screen off, idle). WINDOW = brief accel window after a sig-motion trigger. */
+    private enum class Mode { CONTINUOUS, ARMED, WINDOW }
 
-    @Volatile private var stopped  = false
+    // ── Worker-thread-only state (single-threaded, no synchronisation needed) ──
+    private var mode            = Mode.ARMED
+    private var accelRegistered = false
+    private var sigMotionArmed  = false
+    private var isShaking       = false
+    private var shakeStartMs    = 0L
+    private var lastShakeMs     = 0L
+    private var lastFireMs      = 0L
+
+    @Volatile private var stopped = false
+
+    private val windowTimeout = Runnable { if (mode == Mode.WINDOW) enterArmed() }
 
     // ── Accelerometer listener (runs on workerThread) ─────────────────────────
-
     private val accelListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             val (x, y, z) = event.values
@@ -89,12 +108,11 @@ class ShakeHelper(
                             mainHandler.post(onShake)
                         }
                         isShaking = false
-                        // Trigger mode: close the window and re-arm after a short pause so
-                        // residual motion from the same gesture doesn't re-fire.
-                        if (sigMotion != null) stopAccelAndRearm(rearmDelayMs = 500L)
+                        // In a screen-off window: close it and re-arm. In continuous mode keep
+                        // listening — the 2 s lastFireMs cooldown prevents an immediate re-fire.
+                        if (mode == Mode.WINDOW) enterArmed()
                     }
-                    // 800 ms gap tolerance — handles the 5 Hz background throttle rate
-                    // (200 ms/event × 4 events = 800 ms max expected gap during active shake).
+                    // Tolerate brief dips below threshold between shake oscillations.
                     now - lastShakeMs > 800L -> isShaking = false
                 }
             }
@@ -102,83 +120,121 @@ class ShakeHelper(
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
     }
 
-    // ── Significant-motion trigger (delivered on main thread, one-shot) ───────
-
+    // ── Significant-motion trigger (one-shot; delivered on main thread) ────────
     private val triggerListener = object : TriggerEventListener() {
         override fun onTrigger(event: TriggerEvent) {
-            if (!stopped) workerHandler.post { openAccelWindow() }
+            // Hardware disarmed itself after firing; reflect that and open the confirm window.
+            if (!stopped) workerHandler.post {
+                sigMotionArmed = false
+                if (mode == Mode.ARMED) enterWindow()
+            }
         }
     }
 
-    // ── Public API ─────────────────────────────────────────────────────────────
+    // ── Screen on/off switches the detection strategy ─────────────────────────
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, intent: Intent) {
+            when (intent.action) {
+                Intent.ACTION_SCREEN_ON  -> workerHandler.post { if (!stopped) enterContinuous() }
+                Intent.ACTION_SCREEN_OFF -> workerHandler.post { if (!stopped) enterArmed() }
+            }
+        }
+    }
 
+    // ── Public API ────────────────────────────────────────────────────────────
     fun start() {
         stopped = false
-        if (sigMotion != null) {
-            sensorManager.requestTriggerSensor(triggerListener, sigMotion)
-        } else {
-            workerHandler.post { registerAccelContinuous() }
+        ContextCompat.registerReceiver(
+            appCtx, screenReceiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_SCREEN_OFF)
+            },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        workerHandler.post {
+            // No significant-motion hardware → continuous accel is the only option in both states.
+            if (powerManager.isInteractive || sigMotion == null) enterContinuous() else enterArmed()
         }
     }
 
     fun stop() {
         stopped = true
-        workerHandler.removeCallbacksAndMessages(null)
-        sensorManager.unregisterListener(accelListener)
-        sigMotion?.let { runCatching { sensorManager.cancelTriggerSensor(triggerListener, it) } }
-        if (wakeLock.isHeld) runCatching { wakeLock.release() }
-        workerThread.quitSafely()
+        runCatching { appCtx.unregisterReceiver(screenReceiver) }
+        workerHandler.post {
+            workerHandler.removeCallbacks(windowTimeout)
+            unregisterAccel()
+            cancelSigMotion()
+            if (wakeLock.isHeld) runCatching { wakeLock.release() }
+            workerThread.quitSafely()
+        }
     }
 
-    // ── Worker-thread helpers ──────────────────────────────────────────────────
+    // ── Mode transitions (all run on workerThread) ────────────────────────────
+    private fun enterContinuous() {
+        workerHandler.removeCallbacks(windowTimeout)
+        cancelSigMotion()
+        if (wakeLock.isHeld) runCatching { wakeLock.release() }
+        mode = Mode.CONTINUOUS
+        registerAccel()
+    }
 
-    /** Opens the 3 s accelerometer window after a significant-motion trigger. */
-    private fun openAccelWindow() {
-        if (accelRegistered || stopped) return
-        accelRegistered = true
+    private fun enterArmed() {
+        workerHandler.removeCallbacks(windowTimeout)
+        unregisterAccel()
+        if (wakeLock.isHeld) runCatching { wakeLock.release() }
+        if (sigMotion == null) {
+            // Best effort without a wake-up sensor: stay continuous.
+            mode = Mode.CONTINUOUS
+            registerAccel()
+        } else {
+            mode = Mode.ARMED
+            armSigMotion()
+        }
+    }
+
+    private fun enterWindow() {
+        mode = Mode.WINDOW
         isShaking = false
-        // Prevent CPU sleep during the detection window. Doze mode would otherwise
-        // put the CPU to sleep immediately after sig-motion fires, so the accelerometer
-        // gets no events and the shake is never confirmed. Auto-timeout at 3.5 s.
-        if (!wakeLock.isHeld) wakeLock.acquire(3500L)
-        accelerometer?.let {
-            // maxReportLatencyUs = 0: force immediate event delivery, no batching.
-            // Without this the OS can hold events until the window expires.
-            sensorManager.registerListener(accelListener, it, SensorManager.SENSOR_DELAY_GAME, 0, workerHandler)
-        }
-        // Auto-expire: 3 s window — sig motion fires at motion START, user may begin
-        // deliberate shaking 1+ s later; 1.5 s was too tight in practice.
-        workerHandler.postDelayed({ stopAccelAndRearm(rearmDelayMs = 200L) }, 3000L)
+        if (!wakeLock.isHeld) wakeLock.acquire(WINDOW_MS + 500L)
+        registerAccel()
+        workerHandler.postDelayed(windowTimeout, WINDOW_MS)
     }
 
-    /** Fallback path: keep accelerometer on permanently (foreground-service-only path). */
-    private fun registerAccelContinuous() {
+    // ── Sensor (un)registration helpers (idempotent) ──────────────────────────
+    private fun registerAccel() {
         if (accelRegistered || stopped) return
-        accelRegistered = true
         accelerometer?.let {
-            sensorManager.registerListener(accelListener, it, SensorManager.SENSOR_DELAY_GAME, 0, workerHandler)
+            // maxReportLatencyUs = 0: immediate delivery, no batching (matters in the short window).
+            sensorManager.registerListener(accelListener, it, SensorManager.SENSOR_DELAY_UI, 0, workerHandler)
+            accelRegistered = true
         }
     }
 
-    private fun stopAccelAndRearm(rearmDelayMs: Long) {
-        workerHandler.removeCallbacksAndMessages(null)
+    private fun unregisterAccel() {
+        if (!accelRegistered) return
         sensorManager.unregisterListener(accelListener)
-        if (wakeLock.isHeld) runCatching { wakeLock.release() }
         accelRegistered = false
         isShaking = false
-        workerHandler.postDelayed({ rearmTrigger() }, rearmDelayMs)
     }
 
-    private fun rearmTrigger() {
-        if (!stopped) sigMotion?.let { sensorManager.requestTriggerSensor(triggerListener, it) }
+    private fun armSigMotion() {
+        if (sigMotionArmed || stopped) return
+        sigMotion?.let { if (sensorManager.requestTriggerSensor(triggerListener, it)) sigMotionArmed = true }
+    }
+
+    private fun cancelSigMotion() {
+        if (!sigMotionArmed) return
+        sigMotion?.let { runCatching { sensorManager.cancelTriggerSensor(triggerListener, it) } }
+        sigMotionArmed = false
     }
 
     companion object {
+        private const val WINDOW_MS = 3000L  // screen-off accel confirm window after a trigger
+
         /**
-         * Single 80 ms haptic pulse confirming a shake gesture.
-         * Called by shake callbacks AFTER tryShakeToggle succeeds so that exactly one
-         * vibration fires per toggle — even when the composable and service helpers
-         * both detect the same shake simultaneously.
+         * Single 80 ms haptic pulse confirming a shake gesture. Called by shake callbacks AFTER
+         * tryShakeToggle succeeds so exactly one vibration fires per toggle.
          */
         fun hapticFeedback(context: Context) {
             val appCtx = context.applicationContext

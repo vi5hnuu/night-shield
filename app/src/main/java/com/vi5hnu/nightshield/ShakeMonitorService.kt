@@ -41,9 +41,10 @@ class ShakeMonitorService : Service() {
         }
         bootstrapIfNeeded()
 
-        // Uses TYPE_SIGNIFICANT_MOTION (a hardware wake-up sensor) so a shake is detected even
-        // with the screen off / CPU asleep — a plain continuous accelerometer would be starved
-        // of events during Doze. ShakeHelper acquires a brief wake lock to confirm the gesture.
+        // ShakeHelper is screen-aware: continuous accelerometer while the screen is on (reliable,
+        // in-app), and a low-power significant-motion wake-up + brief accel window while the
+        // screen is off. The foreground service keeps this process alive so detection survives
+        // OEM background kills.
         shakeHelper = ShakeHelper(this) {
             if (!NightShieldManager.allowShake.value) { stopSelf(); return@ShakeHelper }
             NightShieldManager.tryShakeToggle {
