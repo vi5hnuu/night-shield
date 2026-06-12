@@ -71,15 +71,15 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         // Filter is starting — stop the shake monitor that runs when filter is off
         ShakeMonitorService.stop(applicationContext)
 
-        // Background shake detection — works even when the app is closed
+        // Shake-to-OFF while the filter is on. This service is a live foreground service, so the
+        // significant-motion path works reliably here; onDestroy is the single writer that clears
+        // the active flag, refreshes the widget, and restarts the shake monitor.
         shakeHelper = ShakeHelper(this) {
             if (NightShieldManager.allowShake.value) {
                 NightShieldManager.tryShakeToggle {
                     ShakeHelper.hapticFeedback(applicationContext)
                     OverlayHelpers.clearSleepTimer(applicationContext)
-                    OverlayHelpers.setOverlaysActive(applicationContext, false)
                     NightShieldManager.setSleepTimer(0)
-                    NightShieldWidgetProvider.updateWidget(applicationContext)
                     stopSelf()
                 }
             }
@@ -142,9 +142,13 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val isSunrise = intent?.getBooleanExtra(EXTRA_SUNRISE, false) ?: false
 
-        // Ensure active state is persisted — needed when Android restarts the service after a
-        // system kill (START_STICKY passes intent=null) because onDestroy disposed the key.
+        // This service is the sole writer of the active state. Set it on every start —
+        // also needed when Android restarts the service after a system kill (START_STICKY
+        // passes intent=null) because onDestroy cleared the key. Mirror it into the reactive
+        // flow for the UI and refresh the widget so it reflects ON immediately.
         OverlayHelpers.setOverlaysActive(applicationContext, true)
+        NightShieldManager.setFilterActive(true)
+        NightShieldWidgetProvider.updateWidget(applicationContext)
 
         showOverlay()
         createNotificationChannel()
@@ -336,11 +340,13 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         sunriseJob?.cancel()
         eyeBreakJob?.cancel()
         serviceScope.cancel()
+        // Sole writer of active state: clear the persisted flag + reactive flow, then
+        // refresh the widget so it shows OFF the moment the service stops.
         OverlayHelpers.dispose(applicationContext)
-        // Update widget immediately so it shows OFF as soon as the service stops
+        NightShieldManager.setFilterActive(false)
         NightShieldWidgetProvider.updateWidget(applicationContext)
-        // Restart shake monitor so shake-to-ON works while filter is off
-        ShakeMonitorService.startIfNeeded(applicationContext)
+        // Filter is now off — reconcile the shake monitor so shake-to-ON keeps working.
+        NightShieldController.syncShakeMonitor(applicationContext)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         // Wrap in try-catch: if overlay permission was revoked while the service was running,
         // removeView() throws IllegalArgumentException (view not attached), which would abort

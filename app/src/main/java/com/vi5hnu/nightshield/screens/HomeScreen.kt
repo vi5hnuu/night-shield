@@ -64,7 +64,6 @@ import com.vi5hnu.nightshield.ScheduleEntry
 import com.vi5hnu.nightshield.UsageTracker
 import com.vi5hnu.nightshield.widgets.ColorDot
 import com.vi5hnu.nightshield.widgets.ColorPicker
-import com.vi5hnu.nightshield.widgets.ShakeDetector
 import com.vi5hnu.nightshield.widgets.Tile
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.toArgb
@@ -130,14 +129,8 @@ fun HomeScreen(
         return
     }
 
-    // Shake detection (gated by allowShake)
-    if (allowShake) {
-        ShakeDetector {
-            if (areServicesActive) stopOverlays()
-            else if (hasOverlayPermission) launchOverlays()
-            else onPermissionRequest()
-        }
-    }
+    // Shake-to-toggle is handled by the foreground services (NightShieldService when the
+    // filter is on, ShakeMonitorService when it's off), so no in-Compose detector is needed.
 
     val haptic = LocalHapticFeedback.current
 

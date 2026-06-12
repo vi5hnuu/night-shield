@@ -36,6 +36,6 @@ class BootReceiver : BroadcastReceiver() {
         }
 
         // Start shake monitor so shake-to-ON works after reboot (filter off at boot)
-        ShakeMonitorService.startIfNeeded(context)
+        NightShieldController.syncShakeMonitor(context)
     }
 }

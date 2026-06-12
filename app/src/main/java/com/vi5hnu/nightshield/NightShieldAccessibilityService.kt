@@ -2,7 +2,6 @@ package com.vi5hnu.nightshield
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
-import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import androidx.compose.ui.graphics.Color
 
@@ -21,7 +20,6 @@ class NightShieldAccessibilityService : AccessibilityService() {
     // Stores global settings before any per-app override so we can restore them
     private var savedIntensity: Float? = null
     private var savedColor: Color? = null
-    private var shakeHelper: ShakeHelper? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -37,29 +35,10 @@ class NightShieldAccessibilityService : AccessibilityService() {
         // starts cold (i.e. the accessibility service is running but the app
         // was never opened).  Without this, appFilterConfigs is always empty
         // and the pause-filter feature never fires.
+        // Shake-to-toggle is handled exclusively by NightShieldService (filter on)
+        // and ShakeMonitorService (filter off) — both foreground services with
+        // reliable sensor access — so this service no longer detects shakes.
         bootstrapManagerIfNeeded()
-
-        // Full shake toggle (on→off and off→on) via the always-running accessibility service
-        shakeHelper = ShakeHelper(applicationContext) {
-            if (!NightShieldManager.allowShake.value) return@ShakeHelper
-            NightShieldManager.tryShakeToggle {
-                ShakeHelper.hapticFeedback(applicationContext)
-                if (OverlayHelpers.areOverlaysActive(applicationContext)) {
-                    applicationContext.stopService(Intent(applicationContext, NightShieldService::class.java))
-                    OverlayHelpers.setOverlaysActive(applicationContext, false)
-                    NightShieldManager.setSleepTimer(0)
-                } else if (OverlayHelpers.checkOverlayPermission(applicationContext)) {
-                    try {
-                        applicationContext.startForegroundService(Intent(applicationContext, NightShieldService::class.java))
-                        OverlayHelpers.setOverlaysActive(applicationContext, true)
-                    } catch (_: Exception) {
-                        // Background FGS start denied; ShakeMonitorService handles this path
-                    }
-                }
-                NightShieldWidgetProvider.updateWidget(applicationContext)
-            }
-        }
-        shakeHelper?.start()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
@@ -114,11 +93,6 @@ class NightShieldAccessibilityService : AccessibilityService() {
                 OverlayHelpers.loadAppConfigs(applicationContext)
             )
         }
-        val (_, _, allowShake) = OverlayHelpers.loadFilterSettings(applicationContext)
-        NightShieldManager.setAllowShake(allowShake)
-        NightShieldManager.setShakeIntensity(
-            OverlayHelpers.loadShakeIntensity(applicationContext)
-        )
     }
 
     private fun restore() {
@@ -133,8 +107,6 @@ class NightShieldAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        shakeHelper?.stop()
-        shakeHelper = null
         restore()
     }
 }

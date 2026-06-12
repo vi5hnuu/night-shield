@@ -72,20 +72,9 @@ class NightShieldWidgetProvider : AppWidgetProvider() {
         val isEnabled = action == AppWidgetManager.ACTION_APPWIDGET_ENABLED
         val customSignal = action == TOGGLE_SHIELD_SIGNAL
         if (!isEnabled && !customSignal) return
-        val isRunning = OverlayHelpers.areOverlaysActive(context)
-        if (customSignal) {
-            if (isRunning) {
-                context.stopService(Intent(context, NightShieldService::class.java))
-                OverlayHelpers.setOverlaysActive(context, false)
-            } else if (OverlayHelpers.checkOverlayPermission(context)) {
-                try {
-                    context.startForegroundService(Intent(context, NightShieldService::class.java))
-                    OverlayHelpers.setOverlaysActive(context, true)
-                } catch (_: Exception) {
-                    // Service failed to start; leave state as false so widget shows correct OFF
-                }
-            }
-        }
+        // Toggle through the single controller — the service owns the active flag and refreshes
+        // the widget on its transition. The refresh below covers the non-toggle (enable) path.
+        if (customSignal) NightShieldController.toggle(context)
         updateWidget(context)
     }
 

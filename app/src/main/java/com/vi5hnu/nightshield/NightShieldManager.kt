@@ -102,6 +102,13 @@ object NightShieldManager {
         }
     }
 
+    // ── Filter active state (reactive mirror of the persisted KEY_ACTIVE flag) ──
+    // Written only by NightShieldService (onStartCommand → true, onDestroy → false);
+    // seeded from prefs by MainActivity on launch. UI observes this for live button state.
+    private val _isFilterActive = MutableStateFlow(false)
+    val isFilterActive: StateFlow<Boolean> = _isFilterActive.asStateFlow()
+    fun setFilterActive(active: Boolean) { _isFilterActive.value = active }
+
     // ── Color picker visibility ───────────────────────────────────────────────
     private val _isCanvasColorPickerVisible = MutableStateFlow(false)
     val isCanvasColorPickerVisible: StateFlow<Boolean> = _isCanvasColorPickerVisible.asStateFlow()

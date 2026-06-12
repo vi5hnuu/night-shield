@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -20,11 +22,10 @@ import androidx.core.content.ContextCompat
  * when the user swipes the app from recents. Foreground services display a
  * visible notification and cannot be silently killed by the OS.
  *
- * Lifecycle:
- *  - Started by [NightShieldService.onDestroy] when the filter turns off
- *  - Started by [BootReceiver] at boot if shake is enabled and filter is off
- *  - Stops itself after successfully triggering [NightShieldService]
- *  - Stopped by [NightShieldService.onCreate] when the filter turns on
+ * Lifecycle is governed by a single rule in [NightShieldController.syncShakeMonitor]:
+ * run iff shake enabled AND filter off AND overlay permission granted. That sync is
+ * called from app launch/resume, the shake toggle, boot, and on every filter on/off
+ * transition. The monitor also stops itself immediately after triggering the filter.
  */
 class ShakeMonitorService : Service() {
 
@@ -33,24 +34,22 @@ class ShakeMonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        }
         bootstrapIfNeeded()
 
-        shakeHelper = ShakeHelper(this) {
+        // Foreground service → unrestricted sensor access, so use the continuous
+        // accelerometer directly rather than the fragile significant-motion path.
+        shakeHelper = ShakeHelper(this, forceContinuousAccel = true) {
             if (!NightShieldManager.allowShake.value) { stopSelf(); return@ShakeHelper }
             NightShieldManager.tryShakeToggle {
                 ShakeHelper.hapticFeedback(applicationContext)
-                if (OverlayHelpers.checkOverlayPermission(applicationContext)) {
-                    try {
-                        OverlayHelpers.setOverlaysActive(applicationContext, true)
-                        startForegroundService(
-                            Intent(applicationContext, NightShieldService::class.java)
-                        )
-                        NightShieldWidgetProvider.updateWidget(applicationContext)
-                    } catch (_: Exception) {
-                        OverlayHelpers.setOverlaysActive(applicationContext, false)
-                    }
-                }
+                // Controller starts NightShieldService, which flips the active flag and
+                // refreshes the widget. NightShieldService.onCreate stops this monitor.
+                NightShieldController.activate(applicationContext)
                 stopSelf()
             }
         }
@@ -99,14 +98,10 @@ class ShakeMonitorService : Service() {
         const val NOTIFICATION_ID = 5432
 
         /**
-         * Starts the shake monitor if shake is enabled and the filter is currently off.
-         * Reads directly from SharedPreferences so it works in cold-process contexts
-         * (BootReceiver, onDestroy) where NightShieldManager may not be hydrated.
+         * Start the monitor. Callers must gate on the "should run" rule first —
+         * use [NightShieldController.syncShakeMonitor], which is the single owner of that rule.
          */
-        fun startIfNeeded(context: Context) {
-            val (_, _, allowShake) = OverlayHelpers.loadFilterSettings(context)
-            if (!allowShake) return
-            if (OverlayHelpers.areOverlaysActive(context)) return
+        fun start(context: Context) {
             try {
                 ContextCompat.startForegroundService(
                     context,

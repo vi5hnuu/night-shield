@@ -20,7 +20,6 @@ import com.vi5hnu.nightshield.ui.theme.NightShieldTheme
 class MainActivity : ComponentActivity() {
 
     private var hasOverlayPermission = mutableStateOf(false)
-    private var areServicesRunning   = mutableStateOf(false)
 
     private val prefs by lazy { getSharedPreferences("overlay_prefs", MODE_PRIVATE) }
 
@@ -75,7 +74,8 @@ class MainActivity : ComponentActivity() {
 
         // ── Restore persisted settings into NightShieldManager ───────────────
         hasOverlayPermission.value = OverlayHelpers.checkOverlayPermission(applicationContext)
-        areServicesRunning.value   = OverlayHelpers.areOverlaysActive(applicationContext)
+        // Seed the reactive active-state flow from the durable flag (the service keeps it updated).
+        NightShieldManager.setFilterActive(OverlayHelpers.areOverlaysActive(applicationContext))
 
         val (color, intensity, allowShake) = OverlayHelpers.loadFilterSettings(applicationContext)
         NightShieldManager.setCanvasColor(color)
@@ -92,10 +92,15 @@ class MainActivity : ComponentActivity() {
         NightShieldManager.setEyeBreakEnabled(OverlayHelpers.loadEyeBreakEnabled(applicationContext))
         NightShieldManager.setDarkModeAutoSync(OverlayHelpers.loadDarkModeSync(applicationContext))
 
-        if (hasOverlayPermission.value && areServicesRunning.value) startOverlayService()
+        if (hasOverlayPermission.value && OverlayHelpers.areOverlaysActive(applicationContext)) startOverlayService()
+        // Start/stop the background shake monitor per the single rule (shake on + filter off + perm).
+        NightShieldController.syncShakeMonitor(applicationContext)
 
         setContent {
-            LaunchedEffect(areServicesRunning.value) {
+            val isFilterActive by NightShieldManager.isFilterActive.collectAsState()
+            val areServicesActive = isFilterActive && hasOverlayPermission.value
+
+            LaunchedEffect(areServicesActive) {
                 NightShieldWidgetProvider.updateWidget(applicationContext)
             }
 
@@ -145,9 +150,11 @@ class MainActivity : ComponentActivity() {
                                 NightShieldManager.filterIntensity.value,
                                 it,
                             )
+                            // Shake toggle changed — start or stop the background monitor.
+                            NightShieldController.syncShakeMonitor(applicationContext)
                         },
                         allowShake           = NightShieldManager.allowShake.collectAsState().value,
-                        areServicesActive    = areServicesRunning.value,
+                        areServicesActive    = areServicesActive,
                         hasOverlayPermission = hasOverlayPermission.value,
                         onPermissionRequest  = { requestOverlayPermission() },
                         launchOverlays       = { launchOverlays() },
@@ -166,16 +173,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun launchOverlays() {
-        if (!hasOverlayPermission.value) return
-        startOverlayService()
-        OverlayHelpers.setOverlaysActive(this, true)
-        areServicesRunning.value = true
+        // The service flips the durable flag + widget; optimistically mirror the flow for
+        // instant button feedback. The service confirms (or self-corrects if it can't start).
+        if (NightShieldController.activate(this)) NightShieldManager.setFilterActive(true)
     }
 
     private fun stopOverlays() {
-        stopOverlayService()
-        OverlayHelpers.setOverlaysActive(this, false)
-        areServicesRunning.value = false
+        NightShieldController.deactivate(this)
+        NightShieldManager.setFilterActive(false)
         NightShieldManager.setSleepTimer(0)
         InterstitialAdManager.onFilterStopped(this)
     }
@@ -192,20 +197,19 @@ class MainActivity : ComponentActivity() {
         startForegroundService(Intent(this, NightShieldService::class.java))
     }
 
-    private fun stopOverlayService() {
-        stopService(Intent(this, NightShieldService::class.java))
-    }
-
     override fun onResume() {
         super.onResume()
         hasOverlayPermission.value = OverlayHelpers.checkOverlayPermission(applicationContext)
         val active = OverlayHelpers.areOverlaysActive(applicationContext)
+        // Reconcile: if the flag says active and we have permission, ensure the service is running
+        // (covers a process-kill where the service died but the durable flag stayed true).
         if (active && hasOverlayPermission.value) startOverlayService()
-        areServicesRunning.value = active && hasOverlayPermission.value
+        val running = active && hasOverlayPermission.value
+        NightShieldManager.setFilterActive(running)
 
         // Dark mode auto-sync: auto-enable filter when system switches to dark mode
         if (NightShieldManager.darkModeAutoSync.value &&
-            !areServicesRunning.value &&
+            !running &&
             hasOverlayPermission.value
         ) {
             val nightFlags = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
@@ -213,6 +217,9 @@ class MainActivity : ComponentActivity() {
                 launchOverlays()
             }
         }
+
+        // Keep the background shake monitor in sync with the current state.
+        NightShieldController.syncShakeMonitor(applicationContext)
 
         AppOpenAdManager.showAdIfAvailable(this)
     }
