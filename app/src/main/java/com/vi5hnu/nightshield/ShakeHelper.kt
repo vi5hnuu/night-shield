@@ -37,13 +37,6 @@ import kotlin.math.sqrt
  */
 class ShakeHelper(
     context: Context,
-    /**
-     * When true, always use the continuous accelerometer and skip the significant-motion
-     * trigger entirely. Pass true from a foreground service, which has unrestricted sensor
-     * access — far more reliable than the sig-motion + windowed-confirmation dance, which
-     * exists only to cope with background accelerometer throttling.
-     */
-    private val forceContinuousAccel: Boolean = false,
     private val thresholdProvider: () -> Float = { NightShieldManager.shakeIntensity.value.threshold },
     private val durationProvider: () -> Int    = { NightShieldManager.shakeIntensity.value.durationMs },
     private val onShake: () -> Unit,
@@ -96,10 +89,9 @@ class ShakeHelper(
                             mainHandler.post(onShake)
                         }
                         isShaking = false
-                        // Trigger mode only: close the window and re-arm after a short pause so
-                        // residual motion from the same gesture doesn't re-fire. In continuous
-                        // mode we keep listening; the 2 s lastFireMs cooldown prevents re-fire.
-                        if (sigMotion != null && !forceContinuousAccel) stopAccelAndRearm(rearmDelayMs = 500L)
+                        // Trigger mode: close the window and re-arm after a short pause so
+                        // residual motion from the same gesture doesn't re-fire.
+                        if (sigMotion != null) stopAccelAndRearm(rearmDelayMs = 500L)
                     }
                     // 800 ms gap tolerance — handles the 5 Hz background throttle rate
                     // (200 ms/event × 4 events = 800 ms max expected gap during active shake).
@@ -122,7 +114,7 @@ class ShakeHelper(
 
     fun start() {
         stopped = false
-        if (sigMotion != null && !forceContinuousAccel) {
+        if (sigMotion != null) {
             sensorManager.requestTriggerSensor(triggerListener, sigMotion)
         } else {
             workerHandler.post { registerAccelContinuous() }

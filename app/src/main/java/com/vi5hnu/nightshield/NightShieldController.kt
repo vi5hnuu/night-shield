@@ -52,9 +52,16 @@ object NightShieldController {
         context.stopService(Intent(context, NightShieldService::class.java))
     }
 
-    /** Toggle the filter based on the current persisted state. */
+    /**
+     * Toggle the filter. "Active" means the service is genuinely alive — after a hard
+     * process-kill the durable flag can be stale-true while no service runs, so we cross-check
+     * [NightShieldService.isRunning] (accurate in-process; a broadcast is delivered to the same
+     * process the service would live in). This lets a tap recover from a stale flag by starting
+     * the filter instead of trying to stop a service that isn't there.
+     */
     fun toggle(context: Context) {
-        if (isActive(context)) deactivate(context) else activate(context)
+        val reallyActive = isActive(context) && NightShieldService.isRunning
+        if (reallyActive) deactivate(context) else activate(context)
     }
 
     /**

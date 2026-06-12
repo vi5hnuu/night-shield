@@ -92,7 +92,13 @@ class MainActivity : ComponentActivity() {
         NightShieldManager.setEyeBreakEnabled(OverlayHelpers.loadEyeBreakEnabled(applicationContext))
         NightShieldManager.setDarkModeAutoSync(OverlayHelpers.loadDarkModeSync(applicationContext))
 
-        if (hasOverlayPermission.value && OverlayHelpers.areOverlaysActive(applicationContext)) startOverlayService()
+        // Reconcile: restart the service only if the flag says active, we have permission, and the
+        // service isn't already alive (recovers from a process-kill without restarting during the
+        // brief stopService→onDestroy gap).
+        if (hasOverlayPermission.value &&
+            OverlayHelpers.areOverlaysActive(applicationContext) &&
+            !NightShieldService.isRunning
+        ) startOverlayService()
         // Start/stop the background shake monitor per the single rule (shake on + filter off + perm).
         NightShieldController.syncShakeMonitor(applicationContext)
 
@@ -201,9 +207,10 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         hasOverlayPermission.value = OverlayHelpers.checkOverlayPermission(applicationContext)
         val active = OverlayHelpers.areOverlaysActive(applicationContext)
-        // Reconcile: if the flag says active and we have permission, ensure the service is running
-        // (covers a process-kill where the service died but the durable flag stayed true).
-        if (active && hasOverlayPermission.value) startOverlayService()
+        // Reconcile: if the flag says active and we have permission but the service isn't alive,
+        // it died to a process-kill — restart it. The !isRunning guard avoids restarting the
+        // filter during the brief stopService→onDestroy window (e.g. user taps OFF then reopens).
+        if (active && hasOverlayPermission.value && !NightShieldService.isRunning) startOverlayService()
         val running = active && hasOverlayPermission.value
         NightShieldManager.setFilterActive(running)
 

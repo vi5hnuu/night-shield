@@ -41,9 +41,10 @@ class ShakeMonitorService : Service() {
         }
         bootstrapIfNeeded()
 
-        // Foreground service → unrestricted sensor access, so use the continuous
-        // accelerometer directly rather than the fragile significant-motion path.
-        shakeHelper = ShakeHelper(this, forceContinuousAccel = true) {
+        // Uses TYPE_SIGNIFICANT_MOTION (a hardware wake-up sensor) so a shake is detected even
+        // with the screen off / CPU asleep — a plain continuous accelerometer would be starved
+        // of events during Doze. ShakeHelper acquires a brief wake lock to confirm the gesture.
+        shakeHelper = ShakeHelper(this) {
             if (!NightShieldManager.allowShake.value) { stopSelf(); return@ShakeHelper }
             NightShieldManager.tryShakeToggle {
                 ShakeHelper.hapticFeedback(applicationContext)
@@ -56,7 +57,16 @@ class ShakeMonitorService : Service() {
         shakeHelper?.start()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Self-correct: after a START_STICKY restart the monitor may no longer be wanted
+        // (filter turned on, or shake disabled, while it was dead). Stop if the rule no longer holds.
+        val (_, _, allowShake) = OverlayHelpers.loadFilterSettings(this)
+        if (!allowShake || NightShieldController.isActive(this)) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        return START_STICKY
+    }
 
     override fun onDestroy() {
         super.onDestroy()

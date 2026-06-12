@@ -61,6 +61,7 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         _savedStateRegistryController.performAttach()
         _savedStateRegistryController.performRestore(null)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
@@ -68,6 +69,12 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         UsageTracker.recordStart()
         bootstrapManagerIfNeeded()
+        // Claim the active state FIRST — before stopping the monitor — so any concurrent
+        // syncShakeMonitor (e.g. MainActivity.onResume firing alongside this start) reads
+        // isActive=true and won't race to restart the monitor we're about to stop. This also
+        // covers START_STICKY restarts (onCreate runs again with intent=null in onStartCommand).
+        OverlayHelpers.setOverlaysActive(applicationContext, true)
+        NightShieldManager.setFilterActive(true)
         // Filter is starting — stop the shake monitor that runs when filter is off
         ShakeMonitorService.stop(applicationContext)
 
@@ -142,12 +149,8 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val isSunrise = intent?.getBooleanExtra(EXTRA_SUNRISE, false) ?: false
 
-        // This service is the sole writer of the active state. Set it on every start —
-        // also needed when Android restarts the service after a system kill (START_STICKY
-        // passes intent=null) because onDestroy cleared the key. Mirror it into the reactive
-        // flow for the UI and refresh the widget so it reflects ON immediately.
-        OverlayHelpers.setOverlaysActive(applicationContext, true)
-        NightShieldManager.setFilterActive(true)
+        // Active state was claimed in onCreate (which always runs before onStartCommand, including
+        // on START_STICKY restarts). Refresh the widget here so it reflects ON immediately.
         NightShieldWidgetProvider.updateWidget(applicationContext)
 
         showOverlay()
@@ -333,6 +336,7 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     override fun onDestroy() {
         super.onDestroy()
+        isRunning = false
         UsageTracker.recordStop(applicationContext)
         shakeHelper?.stop()
         shakeHelper = null
@@ -385,6 +389,16 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     }
 
     companion object {
+        /**
+         * Process-local liveness flag. True between onCreate and onDestroy of a live instance.
+         * Lets callers distinguish "filter flag is true AND the service is actually alive" from
+         * "flag is true but the process was killed" — so reconcile-on-resume only restarts the
+         * service in the genuine-recovery case, never during the brief stopService→onDestroy gap.
+         */
+        @Volatile
+        var isRunning = false
+            private set
+
         const val EXTRA_SUNRISE = "sunrise_mode"
         private const val SUNRISE_DURATION_MS = 30 * 60 * 1000L  // 30 minutes
         private const val CHANNEL_ID = "night_shield_service_channel"
