@@ -47,10 +47,13 @@ class ShakeMonitorService : Service() {
             if (!NightShieldManager.allowShake.value) { stopSelf(); return@ShakeHelper }
             NightShieldManager.tryShakeToggle {
                 ShakeHelper.hapticFeedback(applicationContext)
-                // Controller starts NightShieldService, which flips the active flag and
-                // refreshes the widget. NightShieldService.onCreate stops this monitor.
+                // Start the filter, but do NOT stopSelf() here. This monitor must stay running
+                // (keeping the app in the foreground-service state) until NightShieldService has
+                // gone foreground, otherwise stopping it first drops the FGS exemption and the
+                // background foreground-service start is denied — the overlay never appears while
+                // the flag/widget still flip. NightShieldService.onCreate stops this monitor once
+                // it is safely running (the same ordering the widget/tile paths use).
                 NightShieldController.activate(applicationContext)
-                stopSelf()
             }
         }
         shakeHelper?.start()
