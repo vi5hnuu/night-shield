@@ -224,6 +224,7 @@ object NightShieldManager {
     // ── PRO: App theme ────────────────────────────────────────────────────────
     enum class AppTheme(val label: String) {
         SYSTEM("System"),
+        DYNAMIC("Material You"),
         DARK_OLED("Dark OLED"),
         WARM("Warm"),
         BLUE_NIGHT("Blue Night"),

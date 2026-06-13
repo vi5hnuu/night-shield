@@ -2047,6 +2047,7 @@ private fun AppThemeSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
                 title = theme.label,
                 subtitle = when (theme) {
                     NightShieldManager.AppTheme.SYSTEM       -> "Default deep indigo dark look"
+                    NightShieldManager.AppTheme.DYNAMIC      -> "Material You — colours from your wallpaper (Android 12+)"
                     NightShieldManager.AppTheme.DARK_OLED    -> "Pure black — saves battery on OLED"
                     NightShieldManager.AppTheme.WARM         -> "Amber-tinted dark to match the filter"
                     NightShieldManager.AppTheme.BLUE_NIGHT   -> "Deep navy — calm coding & reading"
