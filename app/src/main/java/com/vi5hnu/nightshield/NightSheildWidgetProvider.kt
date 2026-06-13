@@ -12,7 +12,7 @@ import android.widget.RemoteViews
 class NightShieldWidgetProvider : AppWidgetProvider() {
 
     companion object {
-        private const val TOGGLE_SHIELD_SIGNAL = "com.vi5hnu.nightshield.TOGGLE_SHIELD_SIGNAL"
+        const val TOGGLE_SHIELD_SIGNAL = "com.vi5hnu.nightshield.TOGGLE_SHIELD_SIGNAL"
 
         fun updateWidget(context: Context) {
             val views = RemoteViews(context.packageName, R.layout.night_shield_widget_layout)
