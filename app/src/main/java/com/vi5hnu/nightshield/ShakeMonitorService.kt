@@ -25,7 +25,8 @@ import androidx.core.content.ContextCompat
  * Lifecycle is governed by a single rule in [NightShieldController.syncShakeMonitor]:
  * run iff shake enabled AND filter off AND overlay permission granted. That sync is
  * called from app launch/resume, the shake toggle, boot, and on every filter on/off
- * transition. The monitor also stops itself immediately after triggering the filter.
+ * transition. On a detected shake this monitor starts the filter but does NOT stop itself —
+ * [NightShieldService.onStartCommand] stops it after going foreground (see the callback below).
  */
 class ShakeMonitorService : Service() {
 

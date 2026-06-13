@@ -47,7 +47,8 @@ class ShakeHelper(
     private val accelerating = ArrayDeque<Boolean>()
     private var acceleratingCount = 0
     private var lastFireMs = 0L
-    private var startMs    = 0L
+    // Written on the calling thread in start(), read on the worker thread in the listener.
+    @Volatile private var startMs = 0L
 
     @Volatile private var registered = false
 
