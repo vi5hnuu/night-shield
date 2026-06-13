@@ -33,6 +33,18 @@ class NightShieldWidgetProvider : AppWidgetProvider() {
             )
             views.setOnClickPendingIntent(R.id.shieldAction, pendingIntent)
 
+            // Tapping the status pill opens the app (the shield icon toggles the filter).
+            // Only shown in STANDARD / DETAILED styles — MINIMAL hides the strip, so it stays
+            // toggle-only there.
+            val openAppIntent = PendingIntent.getActivity(
+                context, 100,
+                Intent(context, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(R.id.widgetTextStrip, openAppIntent)
+
             // Apply widget style — floating pill on icon, no harsh strip
             val style = OverlayHelpers.loadWidgetStyle(context)
             when (style) {
@@ -68,19 +80,13 @@ class NightShieldWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        val isEnabled=intent.action==AppWidgetManager.ACTION_APPWIDGET_ENABLED;
-        val customSignal=intent.action==TOGGLE_SHIELD_SIGNAL;
-        if (!(intent.action!=null && (isEnabled || customSignal))) return;
-        val isRunning = OverlayHelpers.areOverlaysActive(context)
-        if(customSignal){
-            if (isRunning) {
-                context.stopService(Intent(context, NightShieldService::class.java))
-                OverlayHelpers.setOverlaysActive(context, false)
-            } else {
-                context.startForegroundService(Intent(context, NightShieldService::class.java))
-                OverlayHelpers.setOverlaysActive(context, true)
-            }
-        }
+        val action = intent.action ?: return
+        val isEnabled = action == AppWidgetManager.ACTION_APPWIDGET_ENABLED
+        val customSignal = action == TOGGLE_SHIELD_SIGNAL
+        if (!isEnabled && !customSignal) return
+        // Toggle through the single controller — the service owns the active flag and refreshes
+        // the widget on its transition. The refresh below covers the non-toggle (enable) path.
+        if (customSignal) NightShieldController.toggle(context)
         updateWidget(context)
     }
 

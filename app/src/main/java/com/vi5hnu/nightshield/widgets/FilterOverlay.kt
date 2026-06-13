@@ -19,16 +19,27 @@ fun FilterOverlay(onTap: () -> Unit) {
     val temporarilyDisabled by NightShieldManager.filterTemporarilyDisabled.collectAsState()
     val gradualFade        by NightShieldManager.gradualFadeEnabled.collectAsState()
 
-    // PRO: Gradual fade only animates the on/off transition (0→1 or 1→0).
-    // Intensity and color changes are applied instantly so the slider stays responsive.
-    val fadeMultiplier by animateFloatAsState(
-        targetValue = if (temporarilyDisabled) 0f else 1f,
-        animationSpec = when {
-            gradualFade && !temporarilyDisabled -> tween(durationMillis = 12_000, easing = LinearEasing)
-            else -> snap()
-        },
-        label = "fade_multiplier",
-    )
+    // fadeMultiplier scales the tint. CRITICAL: when gradual fade is off (the default), it must be
+    // full strength on the VERY FIRST composition — the overlay is often created while the app is
+    // in the background (a shake with the app closed), where the Compose recomposer may not run the
+    // follow-up frames that a LaunchedEffect / animation needs. Depending on those left the overlay
+    // window present but drawing nothing ("widget on, filter not there"). So only the PRO gradual
+    // fade-in uses the animated path; everything else renders immediately.
+    val fadeMultiplier = if (gradualFade) {
+        // PRO: animate the initial activate (mounted false→true) and accessibility temp-disable.
+        var overlayMounted by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) { overlayMounted = true }
+        val anim by animateFloatAsState(
+            targetValue = if (!overlayMounted || temporarilyDisabled) 0f else 1f,
+            animationSpec = if (overlayMounted && !temporarilyDisabled)
+                tween(durationMillis = 12_000, easing = LinearEasing) else snap(),
+            label = "fade_multiplier",
+        )
+        anim
+    } else {
+        // No fade: render the tint immediately (no dependency on post-composition frames).
+        if (temporarilyDisabled) 0f else 1f
+    }
 
     val displayAlpha = canvasColor.alpha * intensity * fadeMultiplier
 

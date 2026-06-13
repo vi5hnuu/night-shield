@@ -1,6 +1,5 @@
 package com.vi5hnu.nightshield
 
-import android.content.Intent
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 
@@ -13,15 +12,10 @@ class NightShieldTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        val isRunning = OverlayHelpers.areOverlaysActive(this)
-        if (isRunning) {
-            stopService(Intent(this, NightShieldService::class.java))
-            OverlayHelpers.setOverlaysActive(this, false)
-        } else {
-            startForegroundService(Intent(this, NightShieldService::class.java))
-            OverlayHelpers.setOverlaysActive(this, true)
-        }
+        // Single control surface — the service owns the active flag and widget refresh.
+        NightShieldController.toggle(this)
         updateTile()
+        NightShieldWidgetProvider.updateWidget(this)
     }
 
     private fun updateTile() {

@@ -3,7 +3,6 @@ package com.vi5hnu.nightshield
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import androidx.core.content.ContextCompat
 
 /**
  * Tasker / Shortcuts / Intent-based automation receiver.
@@ -33,29 +32,13 @@ class TaskerReceiver : BroadcastReceiver() {
             NightShieldManager.setFilterIntensity(intensity)
         }
 
-        val isRunning = OverlayHelpers.areOverlaysActive(context)
+        val isRunning = NightShieldController.isActive(context)
 
         when (intent.action) {
-            ACTION_ON -> if (!isRunning) startFilter(context)
-            ACTION_OFF -> if (isRunning) stopFilter(context)
-            ACTION_TOGGLE -> if (isRunning) stopFilter(context) else startFilter(context)
+            ACTION_ON -> if (!isRunning) NightShieldController.activate(context)
+            ACTION_OFF -> if (isRunning) NightShieldController.deactivate(context)
+            ACTION_TOGGLE -> NightShieldController.toggle(context)
         }
-    }
-
-    private fun startFilter(context: Context) {
-        if (!OverlayHelpers.checkOverlayPermission(context)) return
-        ContextCompat.startForegroundService(
-            context,
-            Intent(context, NightShieldService::class.java)
-        )
-        OverlayHelpers.setOverlaysActive(context, true)
-        NightShieldWidgetProvider.updateWidget(context)
-    }
-
-    private fun stopFilter(context: Context) {
-        context.stopService(Intent(context, NightShieldService::class.java))
-        OverlayHelpers.setOverlaysActive(context, false)
-        NightShieldWidgetProvider.updateWidget(context)
     }
 
     companion object {

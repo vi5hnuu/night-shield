@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
@@ -46,30 +47,46 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     override val lifecycle: Lifecycle = _lifecycleRegistry
 
     private lateinit var windowManager: WindowManager
+    private lateinit var notificationManager: NotificationManager
     private var overlayView: ComposeView? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var sleepTimerJob: Job? = null
     private var sunriseJob: Job? = null
+    private var eyeBreakJob: Job? = null
     private var shakeHelper: ShakeHelper? = null
+    /** Absolute deadline (epoch ms) of the active sleep timer; 0 = none. */
+    private var sleepTimerEndMs = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         _savedStateRegistryController.performAttach()
         _savedStateRegistryController.performRestore(null)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         UsageTracker.recordStart()
         bootstrapManagerIfNeeded()
+        // Claim the active state now (also covers START_STICKY restarts, which re-run onCreate
+        // with intent=null in onStartCommand). NOTE: the shake monitor is deliberately NOT stopped
+        // here — it is stopped only AFTER startForeground() succeeds (see onStartCommand), so the
+        // app keeps the foreground-service state that grants the background-start exemption while
+        // this service promotes itself. Stopping the monitor first dropped that exemption and
+        // intermittently got startForeground() denied (widget flips ON but the overlay never sticks).
+        OverlayHelpers.setOverlaysActive(applicationContext, true)
+        NightShieldManager.setFilterActive(true)
 
-        // Background shake detection — works even when the app is closed
+        // Shake-to-OFF while the filter is on (continuous-accelerometer Seismic detector).
+        // onDestroy is the single writer that clears the active flag, refreshes the widget,
+        // and restarts the shake monitor.
         shakeHelper = ShakeHelper(this) {
             if (NightShieldManager.allowShake.value) {
                 NightShieldManager.tryShakeToggle {
-                    OverlayHelpers.setOverlaysActive(applicationContext, false)
+                    ShakeHelper.hapticFeedback(applicationContext)
+                    OverlayHelpers.clearSleepTimer(applicationContext)
                     NightShieldManager.setSleepTimer(0)
-                    NightShieldWidgetProvider.updateWidget(applicationContext)
                     stopSelf()
                 }
             }
@@ -88,18 +105,43 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             }
         }
 
-        // Sleep timer countdown
+        // Sleep timer — persist deadline and update notification every minute
         serviceScope.launch {
             NightShieldManager.sleepTimerMinutes.collect { minutes ->
                 sleepTimerJob?.cancel()
                 if (minutes > 0) {
+                    sleepTimerEndMs = System.currentTimeMillis() + minutes * 60_000L
+                    OverlayHelpers.saveSleepTimerEnd(applicationContext, sleepTimerEndMs)
+                    updateNotification()
                     sleepTimerJob = launch {
-                        delay(minutes * 60 * 1000L)
-                        OverlayHelpers.setOverlaysActive(applicationContext, false)
-                        NightShieldManager.setSleepTimer(0)
-                        stopSelf()
+                        while (true) {
+                            val remaining = sleepTimerEndMs - System.currentTimeMillis()
+                            if (remaining <= 0) {
+                                OverlayHelpers.clearSleepTimer(applicationContext)
+                                NightShieldManager.setSleepTimer(0)
+                                OverlayHelpers.setOverlaysActive(applicationContext, false)
+                                NightShieldWidgetProvider.updateWidget(applicationContext)
+                                stopSelf()
+                                break
+                            }
+                            delay(60_000L.coerceAtMost(remaining))
+                            updateNotification()
+                        }
                     }
+                } else {
+                    sleepTimerEndMs = 0L
+                    OverlayHelpers.clearSleepTimer(applicationContext)
+                    updateNotification()
                 }
+            }
+        }
+
+        // Eye break reminders — start/stop job when toggle changes
+        serviceScope.launch {
+            NightShieldManager.eyeBreakEnabled.collect { enabled ->
+                eyeBreakJob?.cancel()
+                eyeBreakJob = null
+                if (enabled) startEyeBreakReminders()
             }
         }
     }
@@ -107,20 +149,30 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val isSunrise = intent?.getBooleanExtra(EXTRA_SUNRISE, false) ?: false
 
-        // Gradual fade first-use trial: show it once for free so the user experiences the value
-        if (!ProGate.isPro.value && !OverlayHelpers.isFadeTrialDone(this)) {
-            NightShieldManager.setGradualFadeEnabled(true)
-            OverlayHelpers.markFadeTrialDone(this)
-        }
+        // Active state was claimed in onCreate (which always runs before onStartCommand, including
+        // on START_STICKY restarts). Refresh the widget here so it reflects ON immediately.
+        NightShieldWidgetProvider.updateWidget(applicationContext)
 
         showOverlay()
         createNotificationChannel()
         val notification = createNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            // Foreground promotion was denied (e.g. background-start exemption lost). Abort cleanly
+            // so the flag/widget don't get stuck ON; onDestroy clears them and the monitor — which
+            // we have NOT stopped yet — stays alive to handle the next shake.
+            stopSelf()
+            return START_NOT_STICKY
         }
+
+        // Now firmly foreground: safe to stop the shake monitor without dropping the FGS state.
+        ShakeMonitorService.stop(applicationContext)
+
         if (isSunrise && ProGate.isPro.value) startSunriseMode()
         return START_STICKY
     }
@@ -138,6 +190,8 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         val startTime = System.currentTimeMillis()
         sunriseJob = serviceScope.launch {
             while (true) {
+                // Stop immediately if Pro was revoked mid-animation (e.g., billing refund)
+                if (!ProGate.isPro.value) { stopSelf(); break }
                 val elapsed = System.currentTimeMillis() - startTime
                 if (elapsed >= SUNRISE_DURATION_MS) {
                     OverlayHelpers.setOverlaysActive(applicationContext, false)
@@ -197,12 +251,51 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             PixelFormat.TRANSLUCENT
         )
         params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-        windowManager.addView(overlayView, params)
+        try {
+            windowManager.addView(overlayView, params)
+        } catch (e: Exception) {
+            // Overlay permission revoked between check and add — bail out cleanly so
+            // onDestroy's removeView call doesn't crash on an unattached view.
+            overlayView = null
+            stopSelf()
+        }
     }
 
     private fun createNotificationChannel() {
         val channel = NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW)
-        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
+        notificationManager.createNotificationChannel(channel)
+    }
+
+    /** Re-posts the foreground notification with updated intensity/timer text. */
+    private fun updateNotification() {
+        notificationManager.notify(NOTIFICATION_ID, createNotification())
+    }
+
+    // ── Eye break reminders (20-20-20 rule) ────────────────────────────────────
+
+    private fun startEyeBreakReminders() {
+        val channel = NotificationChannel(
+            EYE_BREAK_CHANNEL_ID,
+            "Eye Break Reminders",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply { description = "20-20-20 rule: look away every 20 minutes" }
+        notificationManager.createNotificationChannel(channel)
+
+        eyeBreakJob = serviceScope.launch {
+            while (true) {
+                delay(20 * 60_000L)
+                if (NightShieldManager.eyeBreakEnabled.value) {
+                    val note = NotificationCompat.Builder(this@NightShieldService, EYE_BREAK_CHANNEL_ID)
+                        .setSmallIcon(R.drawable.ic_moon_24)
+                        .setContentTitle("👁️ Time to rest your eyes!")
+                        .setContentText("Look at something 20 feet away for 20 seconds.")
+                        .setAutoCancel(true)
+                        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                        .build()
+                    notificationManager.notify(EYE_BREAK_NOTIFICATION_ID, note)
+                }
+            }
+        }
     }
 
     private fun createNotification(): Notification {
@@ -219,10 +312,14 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val intensityPct = (NightShieldManager.filterIntensity.value * 100).toInt()
+        val timerSuffix = if (sleepTimerEndMs > 0) {
+            val remaining = ((sleepTimerEndMs - System.currentTimeMillis()) / 60_000L).coerceAtLeast(1)
+            " · Off in ${remaining}m"
+        } else ""
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_24)
             .setContentTitle(getString(R.string.notification_title))
-            .setContentText("Intensity $intensityPct% · ${getString(R.string.notification_text)}")
+            .setContentText("Intensity $intensityPct%$timerSuffix · ${getString(R.string.notification_text)}")
             .setContentIntent(openIntent)
             .setOngoing(true)
             .addAction(R.drawable.ic_notification_24, getString(R.string.notification_action_stop), stopIntent)
@@ -251,20 +348,34 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     override fun onDestroy() {
         super.onDestroy()
+        isRunning = false
         UsageTracker.recordStop(applicationContext)
         shakeHelper?.stop()
         shakeHelper = null
         sleepTimerJob?.cancel()
         sunriseJob?.cancel()
+        eyeBreakJob?.cancel()
         serviceScope.cancel()
+        // Sole writer of active state: clear the persisted flag + reactive flow, then
+        // refresh the widget so it shows OFF the moment the service stops.
         OverlayHelpers.dispose(applicationContext)
+        NightShieldManager.setFilterActive(false)
+        NightShieldWidgetProvider.updateWidget(applicationContext)
+        // Filter is now off — reconcile the shake monitor so shake-to-ON keeps working.
+        NightShieldController.syncShakeMonitor(applicationContext)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-        overlayView?.let { windowManager.removeView(it) }
+        // Wrap in try-catch: if overlay permission was revoked while the service was running,
+        // removeView() throws IllegalArgumentException (view not attached), which would abort
+        // onDestroy and leave all subsequent cleanup unexecuted.
+        try { overlayView?.let { windowManager.removeView(it) } } catch (_: Exception) {}
         overlayView = null
     }
 
     /** Hydrates [NightShieldManager] from SharedPreferences on a cold process start. */
     private fun bootstrapManagerIfNeeded() {
+        // Init billing first so ProGate.isPro is set before any Pro-gated feature is loaded.
+        BillingManager.init(applicationContext)
+
         val (color, intensity, allowShake) = OverlayHelpers.loadFilterSettings(applicationContext)
         if (NightShieldManager.canvasColor.value == NightShieldManager.TemperaturePreset.AMBER.color) {
             // Only override if still at the hardcoded default — means MainActivity never ran
@@ -273,15 +384,39 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         }
         NightShieldManager.setAllowShake(allowShake)
         NightShieldManager.setShakeIntensity(OverlayHelpers.loadShakeIntensity(applicationContext))
-        NightShieldManager.setGradualFadeEnabled(OverlayHelpers.loadGradualFade(applicationContext))
-        BillingManager.init(applicationContext)
+        NightShieldManager.setGradualFadeEnabled(OverlayHelpers.loadGradualFade(applicationContext) && ProGate.isPro.value)
+        NightShieldManager.setEyeBreakEnabled(OverlayHelpers.loadEyeBreakEnabled(applicationContext))
+        NightShieldManager.setDarkModeAutoSync(OverlayHelpers.loadDarkModeSync(applicationContext))
+
+        // Restore sleep timer if service was restarted with an active timer
+        val savedEnd = OverlayHelpers.loadSleepTimerEndMs(applicationContext)
+        if (savedEnd > System.currentTimeMillis()) {
+            sleepTimerEndMs = savedEnd
+            val remaining = ((savedEnd - System.currentTimeMillis()) / 60_000L).toInt().coerceAtLeast(1)
+            NightShieldManager.setSleepTimer(remaining)
+        } else if (savedEnd != 0L) {
+            // Timer expired while service was down — clear it
+            OverlayHelpers.clearSleepTimer(applicationContext)
+        }
     }
 
     companion object {
+        /**
+         * Process-local liveness flag. True between onCreate and onDestroy of a live instance.
+         * Lets callers distinguish "filter flag is true AND the service is actually alive" from
+         * "flag is true but the process was killed" — so reconcile-on-resume only restarts the
+         * service in the genuine-recovery case, never during the brief stopService→onDestroy gap.
+         */
+        @Volatile
+        var isRunning = false
+            private set
+
         const val EXTRA_SUNRISE = "sunrise_mode"
         private const val SUNRISE_DURATION_MS = 30 * 60 * 1000L  // 30 minutes
         private const val CHANNEL_ID = "night_shield_service_channel"
         private const val CHANNEL_NAME = "Night Shield Service"
         private const val NOTIFICATION_ID = 1234
+        private const val EYE_BREAK_CHANNEL_ID = "night_shield_eye_break"
+        private const val EYE_BREAK_NOTIFICATION_ID = 5678
     }
 }

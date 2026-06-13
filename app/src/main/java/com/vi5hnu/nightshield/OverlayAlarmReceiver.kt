@@ -3,7 +3,6 @@ package com.vi5hnu.nightshield
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import androidx.core.content.ContextCompat
 
 class OverlayAlarmReceiver : BroadcastReceiver() {
     companion object {
@@ -18,40 +17,18 @@ class OverlayAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val action    = intent.getStringExtra(EXTRA_ACTION) ?: ACTION_START
         val intensity = intent.getFloatExtra(EXTRA_INTENSITY, -1f)
-        val isRunning = OverlayHelpers.areOverlaysActive(context)
+        val isRunning = NightShieldController.isActive(context)
 
         when (action) {
             ACTION_START -> if (!isRunning) {
-                // Apply scheduled intensity before starting (pro feature)
-                if (intensity in 0.1f..1.0f) NightShieldManager.setFilterIntensity(intensity)
-                startService(context, sunrise = false)
+                // targetIntensity is Pro-only; guard here as defense-in-depth against stale backup data
+                if (intensity in 0.1f..1.0f && ProGate.isPro.value) NightShieldManager.setFilterIntensity(intensity)
+                NightShieldController.activate(context)
             }
 
-            ACTION_STOP -> if (isRunning) stopService(context)
+            ACTION_STOP -> if (isRunning) NightShieldController.deactivate(context)
 
-            ACTION_SUNRISE -> {
-                // Sunrise: start if not already running, service handles gradual fade-out
-                if (!isRunning) startService(context, sunrise = true)
-                else {
-                    // Already running — just signal sunrise mode to the running service
-                    startService(context, sunrise = true)
-                }
-            }
+            ACTION_SUNRISE -> NightShieldController.activate(context, sunrise = true)
         }
-    }
-
-    private fun startService(context: Context, sunrise: Boolean) {
-        val serviceIntent = Intent(context, NightShieldService::class.java).apply {
-            if (sunrise) putExtra(NightShieldService.EXTRA_SUNRISE, true)
-        }
-        ContextCompat.startForegroundService(context, serviceIntent)
-        OverlayHelpers.setOverlaysActive(context, true)
-        NightShieldWidgetProvider.updateWidget(context)
-    }
-
-    private fun stopService(context: Context) {
-        context.stopService(Intent(context, NightShieldService::class.java))
-        OverlayHelpers.setOverlaysActive(context, false)
-        NightShieldWidgetProvider.updateWidget(context)
     }
 }

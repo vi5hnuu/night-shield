@@ -82,6 +82,18 @@
                 android:value="Blue light overlay filter for eye protection" />
         </service>
 
+        <!-- Shake-to-activate monitor — runs as foreground service when filter is OFF
+             so OEM battery managers cannot silently kill it the way they kill background
+             processes and accessibility services. -->
+        <service
+            android:name=".ShakeMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Shake gesture detector to activate the night filter" />
+        </service>
+
         <!-- Quick Settings tile -->
         <service
             android:name=".NightShieldTileService"

@@ -39,6 +39,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -63,7 +64,6 @@ import com.vi5hnu.nightshield.ScheduleEntry
 import com.vi5hnu.nightshield.UsageTracker
 import com.vi5hnu.nightshield.widgets.ColorDot
 import com.vi5hnu.nightshield.widgets.ColorPicker
-import com.vi5hnu.nightshield.widgets.ShakeDetector
 import com.vi5hnu.nightshield.widgets.Tile
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.toArgb
@@ -129,17 +129,16 @@ fun HomeScreen(
         return
     }
 
-    // Shake detection (gated by allowShake)
-    if (allowShake) {
-        ShakeDetector {
-            if (areServicesActive) stopOverlays()
-            else if (hasOverlayPermission) launchOverlays()
-            else onPermissionRequest()
-        }
-    }
+    // Shake-to-toggle is handled by the foreground services (NightShieldService when the
+    // filter is on, ShakeMonitorService when it's off), so no in-Compose detector is needed.
 
     val haptic = LocalHapticFeedback.current
-    val streakDays: Int = remember { OverlayHelpers.getStreakDays(context) }
+
+    // Re-evaluated on every lifecycle state change so values reflect the latest state when
+    // the user returns from Settings (e.g., after granting battery optimisation).
+    val homeLifecycleOwner = LocalLifecycleOwner.current
+    val homeLifecycleState by homeLifecycleOwner.lifecycle.currentStateFlow.collectAsState()
+    val streakDays: Int = remember(homeLifecycleState) { OverlayHelpers.getStreakDays(context) }
 
     // Animations
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -148,18 +147,23 @@ fun HomeScreen(
         animationSpec = infiniteRepeatable(tween(1100, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "glow"
     )
+    val moonRotationRaw by infiniteTransition.animateFloat(
+        initialValue = 0f, targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(20_000, easing = LinearEasing)),
+        label = "moonRotate"
+    )
+    val moonRotation = if (areServicesActive) moonRotationRaw else 0f
     val iconScale by animateFloatAsState(
         targetValue = if (areServicesActive) 1.12f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "scale"
     )
 
-    // Battery optimization banner state
-    val showBatteryBanner by remember {
-        derivedStateOf {
-            val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-            pm.isIgnoringBatteryOptimizations(context.packageName)
-        }
+    // Battery optimization banner state — re-checked on each lifecycle resume so the
+    // banner disappears immediately after the user grants the exemption in Settings.
+    val showBatteryBanner = remember(homeLifecycleState) {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        pm.isIgnoringBatteryOptimizations(context.packageName).not()
     }
 
     // Color picker bottom sheet
@@ -292,7 +296,7 @@ fun HomeScreen(
                                 Icon(
                                     painter = painterResource(R.drawable.ic_moon_24),
                                     contentDescription = if (areServicesActive) stringResource(R.string.status_active) else stringResource(R.string.status_inactive),
-                                    modifier = Modifier.size(44.dp),
+                                    modifier = Modifier.size(44.dp).rotate(moonRotation),
                                     tint = if (areServicesActive) MaterialTheme.colorScheme.primary
                                     else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                                 )
@@ -322,8 +326,29 @@ fun HomeScreen(
                             )
                         }
 
-                        // Streak badge — shown when user has ≥2 consecutive active days
-                        if (streakDays >= 2) {
+                        // Intensity % — shown when filter is active
+                        if (areServicesActive) {
+                            val intensity by NightShieldManager.filterIntensity.collectAsState()
+                            Spacer(Modifier.height(4.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .background(canvasColor, CircleShape)
+                                )
+                                Text(
+                                    text = "${(intensity * 100).toInt()}% intensity",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+
+                        // Streak badge — shown when user has ≥1 active day
+                        if (streakDays >= 1) {
                             Spacer(Modifier.height(8.dp))
                             Surface(
                                 shape = RoundedCornerShape(20.dp),
@@ -481,6 +506,41 @@ fun HomeScreen(
                                     }
                                 }
                             }
+                            // Hint: turning ON via shake when app is closed requires Accessibility Service.
+                            // Re-evaluated on every lifecycle resume so the banner disappears immediately
+                            // when the user enables the service in Settings and returns.
+                            val shakeHintLifecycleOwner = LocalLifecycleOwner.current
+                            val shakeHintLifecycleState by shakeHintLifecycleOwner.lifecycle.currentStateFlow.collectAsState()
+                            val accessibilityEnabled = remember(shakeHintLifecycleState) {
+                                val enabled = android.provider.Settings.Secure.getString(
+                                    context.contentResolver,
+                                    android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                                ) ?: ""
+                                enabled.contains(context.packageName, ignoreCase = true)
+                            }
+                            if (!accessibilityEnabled) {
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp)
+                                        .padding(bottom = 12.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.Top,
+                                    ) {
+                                        Text("ℹ️", style = MaterialTheme.typography.labelMedium)
+                                        Text(
+                                            "To turn the filter ON via shake when the app is closed, enable Night Shield in Accessibility Settings.",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -522,7 +582,7 @@ fun HomeScreen(
                     // PRO — Gradual Fade-in
                     val gradualFade by NightShieldManager.gradualFadeEnabled.collectAsState()
                     Tile(
-                        id =R.drawable.ic_brightness_24,
+                        id = R.drawable.ic_brightness_24,
                         title = "Gradual Fade-in",
                         subtitle = "Filter eases in over 12 s instead of snapping on",
                     ) {
@@ -537,6 +597,40 @@ fun HomeScreen(
                         } else {
                             ProBadge { showUpgradeScreen = true }
                         }
+                    }
+                    SettingsDivider()
+
+                    // 20-20-20 eye break reminders
+                    val eyeBreak by NightShieldManager.eyeBreakEnabled.collectAsState()
+                    Tile(
+                        id = R.drawable.ic_moon_24,
+                        title = "20-20-20 Eye Breaks",
+                        subtitle = "Reminder every 20 min to look away for 20 s",
+                    ) {
+                        Switch(
+                            checked = eyeBreak,
+                            onCheckedChange = {
+                                NightShieldManager.setEyeBreakEnabled(it)
+                                OverlayHelpers.saveEyeBreakEnabled(context, it)
+                            },
+                        )
+                    }
+                    SettingsDivider()
+
+                    // Dark mode auto-sync
+                    val darkSync by NightShieldManager.darkModeAutoSync.collectAsState()
+                    Tile(
+                        id = R.drawable.ic_moon_24,
+                        title = "Dark Mode Auto-sync",
+                        subtitle = "Auto-enable filter when system switches to dark mode",
+                    ) {
+                        Switch(
+                            checked = darkSync,
+                            onCheckedChange = {
+                                NightShieldManager.setDarkModeAutoSync(it)
+                                OverlayHelpers.saveDarkModeSync(context, it)
+                            },
+                        )
                     }
                 }
 
@@ -624,8 +718,8 @@ fun HomeScreen(
                 Spacer(Modifier.height(24.dp))
             }
 
-            // ── Banner ad ─────────────────────────────────────────────────────
-            BannerAd()
+            // ── Banner ad (free users only) ───────────────────────────────────
+            if (!isPro) BannerAd()
 
             // ── Footer ────────────────────────────────────────────────────────
             Box(
@@ -924,9 +1018,21 @@ private fun ScheduleSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
     if (showAddDialog) {
         AddScheduleDialog(
             context = context,
+            isPro = isPro,
             onDismiss = { showAddDialog = false },
             onConfirm = { entry ->
-                NightShieldManager.addSchedule(entry)
+                val isDuplicate = schedules.any {
+                    it.hour == entry.hour && it.minute == entry.minute && it.action == entry.action
+                }
+                if (isDuplicate) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "A schedule at that time already exists",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    NightShieldManager.addSchedule(entry)
+                }
                 showAddDialog = false
             }
         )
@@ -951,7 +1057,11 @@ private fun ScheduleEntryRow(
             modifier = Modifier
                 .size(10.dp)
                 .background(
-                    if (entry.action == ScheduleAction.ON) Color(0xFF34D399) else MaterialTheme.colorScheme.error,
+                    when (entry.action) {
+                        ScheduleAction.ON      -> Color(0xFF34D399)
+                        ScheduleAction.OFF     -> MaterialTheme.colorScheme.error
+                        ScheduleAction.SUNRISE -> Color(0xFFFFA040)
+                    },
                     CircleShape
                 )
         )
@@ -964,7 +1074,11 @@ private fun ScheduleEntryRow(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = if (entry.action == ScheduleAction.ON) stringResource(R.string.schedule_on) else stringResource(R.string.schedule_off),
+                text = when (entry.action) {
+                    ScheduleAction.ON      -> stringResource(R.string.schedule_on)
+                    ScheduleAction.OFF     -> stringResource(R.string.schedule_off)
+                    ScheduleAction.SUNRISE -> "Sunrise fade-out (Pro)"
+                },
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -988,12 +1102,19 @@ private fun ScheduleEntryRow(
 @Composable
 private fun AddScheduleDialog(
     context: Context,
+    isPro: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (ScheduleEntry) -> Unit
 ) {
     var selectedHour by remember { mutableIntStateOf(22) }
     var selectedMinute by remember { mutableIntStateOf(0) }
     var selectedAction by remember { mutableStateOf(ScheduleAction.ON) }
+
+    // Available actions: ON + OFF always; SUNRISE only for Pro
+    val availableActions = if (isPro)
+        listOf(ScheduleAction.ON, ScheduleAction.OFF, ScheduleAction.SUNRISE)
+    else
+        listOf(ScheduleAction.ON, ScheduleAction.OFF)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1031,32 +1152,55 @@ private fun AddScheduleDialog(
                     )
                 }
 
-                // Action selector
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf(ScheduleAction.ON, ScheduleAction.OFF).forEach { action ->
-                        val isSelected = selectedAction == action
+                // Action selector — ON / OFF always; SUNRISE for Pro
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        availableActions.take(2).forEach { action ->
+                            val isSelected = selectedAction == action
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedAction = action },
+                                label = {
+                                    Text(
+                                        when (action) {
+                                            ScheduleAction.ON  -> stringResource(R.string.schedule_on)
+                                            ScheduleAction.OFF -> stringResource(R.string.schedule_off)
+                                            ScheduleAction.SUNRISE -> "Sunrise"
+                                        },
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                },
+                                leadingIcon = {
+                                    Box(
+                                        Modifier.size(8.dp).background(
+                                            when (action) {
+                                                ScheduleAction.ON  -> Color(0xFF34D399)
+                                                ScheduleAction.OFF -> MaterialTheme.colorScheme.error
+                                                ScheduleAction.SUNRISE -> Color(0xFFFFA040)
+                                            },
+                                            CircleShape
+                                        )
+                                    )
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    // SUNRISE chip on its own row (Pro only)
+                    if (isPro) {
                         FilterChip(
-                            selected = isSelected,
-                            onClick = { selectedAction = action },
+                            selected = selectedAction == ScheduleAction.SUNRISE,
+                            onClick = { selectedAction = ScheduleAction.SUNRISE },
                             label = {
-                                Text(
-                                    if (action == ScheduleAction.ON) stringResource(R.string.schedule_on)
-                                    else stringResource(R.string.schedule_off),
-                                    style = MaterialTheme.typography.labelMedium
-                                )
+                                Text("Sunrise fade-out — gradually removes filter", style = MaterialTheme.typography.labelMedium)
                             },
                             leadingIcon = {
-                                Box(
-                                    Modifier.size(8.dp).background(
-                                        if (action == ScheduleAction.ON) Color(0xFF34D399) else MaterialTheme.colorScheme.error,
-                                        CircleShape
-                                    )
-                                )
+                                Box(Modifier.size(8.dp).background(Color(0xFFFFA040), CircleShape))
                             },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
@@ -1080,7 +1224,7 @@ private fun AddScheduleDialog(
 
 @Composable
 private fun BatteryOptBanner(context: Context) {
-    var dismissed by remember { mutableStateOf(false) }
+    var dismissed by remember { mutableStateOf(OverlayHelpers.isBatteryBannerDismissed(context)) }
     AnimatedVisibility(
         visible = !dismissed,
         enter = expandVertically(),
@@ -1131,7 +1275,7 @@ private fun BatteryOptBanner(context: Context) {
                         Text(stringResource(R.string.battery_opt_fix), style = MaterialTheme.typography.labelMedium)
                     }
                     TextButton(
-                        onClick = { dismissed = true },
+                        onClick = { dismissed = true; OverlayHelpers.saveBatteryBannerDismissed(context) },
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
@@ -1154,6 +1298,8 @@ private fun PerAppSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
     val configs by NightShieldManager.appFilterConfigs.collectAsState()
     val context = LocalContext.current
     var showAppPicker by remember { mutableStateOf(false) }
+    // Free users limited to 3 per-app configs; Pro is unlimited
+    val canAddMore = isPro || configs.size < 3
 
     // Accessibility service status — re-checked every time the lifecycle resumes
     // (so banner disappears immediately after user enables it in Settings and returns)
@@ -1274,8 +1420,12 @@ private fun PerAppSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                FilledTonalIconButton(onClick = { showAppPicker = true }) {
-                    Icon(painterResource(R.drawable.ic_add_24), contentDescription = "Add app")
+                if (canAddMore) {
+                    FilledTonalIconButton(onClick = { showAppPicker = true }) {
+                        Icon(painterResource(R.drawable.ic_add_24), contentDescription = "Add app")
+                    }
+                } else {
+                    ProBadge(onClick = onShowUpgrade)
                 }
             }
 

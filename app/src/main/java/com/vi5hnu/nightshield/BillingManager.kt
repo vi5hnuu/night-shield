@@ -6,6 +6,7 @@ import com.android.billingclient.api.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -30,6 +31,8 @@ object BillingManager {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var billingClient: BillingClient? = null
+    private var reconnectAttempts = 0
+    private const val MAX_RECONNECT_ATTEMPTS = 3
 
     // ── Public API ────────────────────────────────────────────────────────────
 
@@ -39,6 +42,9 @@ object BillingManager {
      * then connects and verifies with Play in the background.
      */
     fun init(context: Context) {
+        // Guard against multiple calls (service + activity in same process) to avoid leaking BillingClient
+        if (billingClient != null) return
+
         if (context.billingPrefs().getBoolean(KEY_IS_PRO, false)) ProGate.grant()
 
         billingClient = BillingClient.newBuilder(context.applicationContext)
@@ -105,11 +111,20 @@ object BillingManager {
         billingClient?.startConnection(object : BillingClientStateListener {
             override fun onBillingSetupFinished(result: BillingResult) {
                 if (result.responseCode == BillingClient.BillingResponseCode.OK) {
+                    reconnectAttempts = 0
                     scope.launch { queryPurchases(context) }
                 }
             }
-            // Will reconnect automatically on the next user action that needs billing
-            override fun onBillingServiceDisconnected() {}
+            override fun onBillingServiceDisconnected() {
+                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    reconnectAttempts++
+                    val delayMs = (reconnectAttempts * 2_000L).coerceAtMost(10_000L)
+                    scope.launch {
+                        delay(delayMs)
+                        startConnection(context)
+                    }
+                }
+            }
         })
     }
 
@@ -135,7 +150,16 @@ object BillingManager {
                 ProGate.revoke()
                 setProCache(context, false)
                 // Reset Pro-only settings so they don't persist after revocation
-                if (wasPro) OverlayHelpers.enforceFreeLimits(context)
+                if (wasPro) {
+                    OverlayHelpers.enforceFreeLimits(context)
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        android.widget.Toast.makeText(
+                            context,
+                            "Pro purchase was refunded. Pro features have been disabled.",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
             }
         }
     }

@@ -2,7 +2,6 @@ package com.vi5hnu.nightshield
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
-import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import androidx.compose.ui.graphics.Color
 
@@ -21,7 +20,6 @@ class NightShieldAccessibilityService : AccessibilityService() {
     // Stores global settings before any per-app override so we can restore them
     private var savedIntensity: Float? = null
     private var savedColor: Color? = null
-    private var shakeHelper: ShakeHelper? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -37,24 +35,10 @@ class NightShieldAccessibilityService : AccessibilityService() {
         // starts cold (i.e. the accessibility service is running but the app
         // was never opened).  Without this, appFilterConfigs is always empty
         // and the pause-filter feature never fires.
+        // Shake-to-toggle is handled exclusively by NightShieldService (filter on)
+        // and ShakeMonitorService (filter off) — both foreground services with
+        // reliable sensor access — so this service no longer detects shakes.
         bootstrapManagerIfNeeded()
-
-        // Full shake toggle (on→off and off→on) via the always-running accessibility service
-        shakeHelper = ShakeHelper(applicationContext) {
-            if (!NightShieldManager.allowShake.value) return@ShakeHelper
-            NightShieldManager.tryShakeToggle {
-                if (OverlayHelpers.areOverlaysActive(applicationContext)) {
-                    applicationContext.stopService(Intent(applicationContext, NightShieldService::class.java))
-                    OverlayHelpers.setOverlaysActive(applicationContext, false)
-                    NightShieldManager.setSleepTimer(0)
-                } else if (OverlayHelpers.checkOverlayPermission(applicationContext)) {
-                    OverlayHelpers.setOverlaysActive(applicationContext, true)
-                    applicationContext.startForegroundService(Intent(applicationContext, NightShieldService::class.java))
-                }
-                NightShieldWidgetProvider.updateWidget(applicationContext)
-            }
-        }
-        shakeHelper?.start()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
@@ -75,14 +59,22 @@ class NightShieldAccessibilityService : AccessibilityService() {
         val config = NightShieldManager.appFilterConfigs.value[packageName]
 
         if (config != null) {
-            // Entering a configured app — snapshot global settings once
-            if (savedIntensity == null) {
-                savedIntensity = NightShieldManager.filterIntensity.value
-                savedColor = NightShieldManager.canvasColor.value
-            }
-            config.customIntensity?.let { NightShieldManager.setFilterIntensity(it) }
-            // PRO: per-app custom color
-            config.customColor?.let { NightShieldManager.setCanvasColor(it) }
+            // Snapshot only the fields that will actually be overridden, and restore
+            // the baseline when the next app in a configured-app chain doesn't override them.
+            // This prevents App A's custom intensity from leaking into App B when App B
+            // has no customIntensity of its own.
+            config.customIntensity?.let {
+                if (savedIntensity == null) savedIntensity = NightShieldManager.filterIntensity.value
+                NightShieldManager.setFilterIntensity(it)
+            } ?: savedIntensity?.let { NightShieldManager.setFilterIntensity(it) }
+
+            // PRO: per-app custom color — silently treated as null for free users
+            val effectiveCustomColor = if (ProGate.isPro.value) config.customColor else null
+            effectiveCustomColor?.let {
+                if (savedColor == null) savedColor = NightShieldManager.canvasColor.value
+                NightShieldManager.setCanvasColor(it)
+            } ?: savedColor?.let { NightShieldManager.setCanvasColor(it) }
+
             NightShieldManager.setFilterTemporarilyDisabled(config.filterDisabled)
         } else {
             // Leaving a configured app — restore everything
@@ -101,11 +93,6 @@ class NightShieldAccessibilityService : AccessibilityService() {
                 OverlayHelpers.loadAppConfigs(applicationContext)
             )
         }
-        val (_, _, allowShake) = OverlayHelpers.loadFilterSettings(applicationContext)
-        NightShieldManager.setAllowShake(allowShake)
-        NightShieldManager.setShakeIntensity(
-            OverlayHelpers.loadShakeIntensity(applicationContext)
-        )
     }
 
     private fun restore() {
@@ -120,8 +107,6 @@ class NightShieldAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        shakeHelper?.stop()
-        shakeHelper = null
         restore()
     }
 }
