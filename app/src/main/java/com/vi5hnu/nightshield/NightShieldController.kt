@@ -73,6 +73,7 @@ object NightShieldController {
     fun syncShakeMonitor(context: Context) {
         val (_, _, allowShake) = OverlayHelpers.loadFilterSettings(context)
         val shouldRun = allowShake &&
+            OverlayHelpers.loadBackgroundShake(context) &&
             !isActive(context) &&
             OverlayHelpers.checkOverlayPermission(context)
         if (shouldRun) ShakeMonitorService.start(context)

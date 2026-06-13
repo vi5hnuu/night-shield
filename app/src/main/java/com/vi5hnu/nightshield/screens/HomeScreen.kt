@@ -55,6 +55,7 @@ import com.vi5hnu.nightshield.AppFilterConfig
 import com.vi5hnu.nightshield.BackupHelper
 import com.vi5hnu.nightshield.BillingManager
 import com.vi5hnu.nightshield.FilterProfile
+import com.vi5hnu.nightshield.NightShieldController
 import com.vi5hnu.nightshield.NightShieldManager
 import com.vi5hnu.nightshield.OverlayHelpers
 import com.vi5hnu.nightshield.ProGate
@@ -435,6 +436,22 @@ fun HomeScreen(
                     ) {
                         Column {
                             SettingsDivider()
+
+                            // Background shake — keep detecting when the app is closed (battery tradeoff)
+                            val backgroundShake by NightShieldManager.backgroundShake.collectAsState()
+                            Tile(
+                                R.drawable.vibration_24px,
+                                "Background shake",
+                                "Detect shakes when the app is closed. Off = saves battery, no ongoing notification",
+                            ) {
+                                Switch(checked = backgroundShake, onCheckedChange = {
+                                    NightShieldManager.setBackgroundShake(it)
+                                    OverlayHelpers.saveBackgroundShake(context, it)
+                                    NightShieldController.syncShakeMonitor(context)
+                                })
+                            }
+                            SettingsDivider()
+
                             val shakeIntensity by NightShieldManager.shakeIntensity.collectAsState()
                             // Label + hint row
                             Row(

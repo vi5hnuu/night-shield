@@ -81,6 +81,7 @@ class MainActivity : ComponentActivity() {
         NightShieldManager.setCanvasColor(color)
         NightShieldManager.setFilterIntensity(intensity)
         NightShieldManager.setAllowShake(allowShake)
+        NightShieldManager.setBackgroundShake(OverlayHelpers.loadBackgroundShake(applicationContext))
         NightShieldManager.setShakeIntensity(OverlayHelpers.loadShakeIntensity(applicationContext))
         NightShieldManager.setGradualFadeEnabled(OverlayHelpers.loadGradualFade(applicationContext) && ProGate.isPro.value)
         NightShieldManager.setDimLevel(OverlayHelpers.loadDimLevel(applicationContext))

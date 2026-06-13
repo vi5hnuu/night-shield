@@ -27,6 +27,7 @@ object BackupHelper {
         root.put("filterIntensity", intensity.toDouble())
         root.put("dimLevel", NightShieldManager.dimLevel.value.toDouble())
         root.put("allowShake", allowShake)
+        root.put("backgroundShake", NightShieldManager.backgroundShake.value)
         root.put("shakeIntensity", NightShieldManager.shakeIntensity.value.name)
         root.put("gradualFadeEnabled", NightShieldManager.gradualFadeEnabled.value)
         root.put("eyeBreakEnabled", NightShieldManager.eyeBreakEnabled.value)
@@ -90,6 +91,7 @@ object BackupHelper {
         val intensity = root.optDouble("filterIntensity", 0.6).toFloat().coerceIn(0.1f, 1.0f)
         val dimLevel = root.optDouble("dimLevel", 0.0).toFloat().coerceIn(0f, 0.85f)
         val allowShake = root.optBoolean("allowShake", true)
+        val backgroundShake = root.optBoolean("backgroundShake", true)
         val shakeIntensityName = root.optString("shakeIntensity", NightShieldManager.ShakeIntensity.NORMAL.name)
         val gradualFade = root.optBoolean("gradualFadeEnabled", false)
         val eyeBreakEnabled = root.optBoolean("eyeBreakEnabled", false)
@@ -101,6 +103,7 @@ object BackupHelper {
         NightShieldManager.setFilterIntensity(intensity)
         NightShieldManager.setDimLevel(dimLevel)
         NightShieldManager.setAllowShake(allowShake)
+        NightShieldManager.setBackgroundShake(backgroundShake)
         NightShieldManager.setShakeIntensity(
             runCatching { NightShieldManager.ShakeIntensity.valueOf(shakeIntensityName) }
                 .getOrDefault(NightShieldManager.ShakeIntensity.NORMAL)
@@ -188,6 +191,7 @@ object BackupHelper {
         OverlayHelpers.saveWidgetStyle(context, NightShieldManager.widgetStyle.value)
         OverlayHelpers.saveGradualFade(context, gradualFade && ProGate.isPro.value)
         OverlayHelpers.saveDimLevel(context, dimLevel)
+        OverlayHelpers.saveBackgroundShake(context, backgroundShake)
         OverlayHelpers.saveEyeBreakEnabled(context, eyeBreakEnabled)
         OverlayHelpers.saveDarkModeSync(context, darkModeSync)
 

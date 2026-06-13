@@ -85,6 +85,15 @@ object NightShieldManager {
     val allowShake: StateFlow<Boolean> = _allowShake.asStateFlow()
     fun setAllowShake(value: Boolean) { _allowShake.value = value }
 
+    /**
+     * When false, the background shake monitor (and its persistent notification) never runs —
+     * shake then works only while the filter is on or the app is open. Saves battery for users
+     * who don't want a 24/7 foreground service. Default true (full reliability).
+     */
+    private val _backgroundShake = MutableStateFlow(true)
+    val backgroundShake: StateFlow<Boolean> = _backgroundShake.asStateFlow()
+    fun setBackgroundShake(value: Boolean) { _backgroundShake.value = value }
+
     private val _shakeIntensity = MutableStateFlow(ShakeIntensity.NORMAL)
     val shakeIntensity: StateFlow<ShakeIntensity> = _shakeIntensity.asStateFlow()
     fun setShakeIntensity(value: ShakeIntensity) { _shakeIntensity.value = value }
