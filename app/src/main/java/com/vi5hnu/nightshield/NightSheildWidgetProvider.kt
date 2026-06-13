@@ -33,6 +33,18 @@ class NightShieldWidgetProvider : AppWidgetProvider() {
             )
             views.setOnClickPendingIntent(R.id.shieldAction, pendingIntent)
 
+            // Tapping the status pill opens the app (the shield icon toggles the filter).
+            // Only shown in STANDARD / DETAILED styles — MINIMAL hides the strip, so it stays
+            // toggle-only there.
+            val openAppIntent = PendingIntent.getActivity(
+                context, 100,
+                Intent(context, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(R.id.widgetTextStrip, openAppIntent)
+
             // Apply widget style — floating pill on icon, no harsh strip
             val style = OverlayHelpers.loadWidgetStyle(context)
             when (style) {
