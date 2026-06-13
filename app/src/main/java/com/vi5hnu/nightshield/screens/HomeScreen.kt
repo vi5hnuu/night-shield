@@ -656,6 +656,27 @@ fun HomeScreen(
                     }
                     SettingsDivider()
 
+                    // PRO — Adaptive intensity (ambient light)
+                    val adaptive by NightShieldManager.adaptiveIntensity.collectAsState()
+                    Tile(
+                        id = R.drawable.ic_brightness_24,
+                        title = "Adaptive Intensity",
+                        subtitle = "Auto-eases the filter using the light sensor (your intensity is the max)",
+                    ) {
+                        if (isPro) {
+                            Switch(
+                                checked = adaptive,
+                                onCheckedChange = {
+                                    NightShieldManager.setAdaptiveIntensity(it)
+                                    OverlayHelpers.saveAdaptiveIntensity(context, it)
+                                },
+                            )
+                        } else {
+                            ProBadge { showUpgradeScreen = true }
+                        }
+                    }
+                    SettingsDivider()
+
                     // 20-20-20 eye break reminders
                     val eyeBreak by NightShieldManager.eyeBreakEnabled.collectAsState()
                     Tile(

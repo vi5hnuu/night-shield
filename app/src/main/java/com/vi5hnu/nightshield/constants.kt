@@ -35,6 +35,7 @@ object OverlayHelpers {
     private const val KEY_BATTERY_BANNER_DISMISSED   = "battery_banner_dismissed"
     private const val KEY_DIM_LEVEL                  = "screen_dim_level"
     private const val KEY_BACKGROUND_SHAKE           = "background_shake"
+    private const val KEY_ADAPTIVE_INTENSITY         = "adaptive_intensity"
 
     fun setOverlaysActive(context: Context, isActive: Boolean) {
         context.appPrefs().edit { putBoolean(KEY_ACTIVE, isActive) }
@@ -100,6 +101,13 @@ object OverlayHelpers {
 
     fun loadBackgroundShake(context: Context): Boolean =
         context.appPrefs().getBoolean(KEY_BACKGROUND_SHAKE, true)
+
+    fun saveAdaptiveIntensity(context: Context, enabled: Boolean) {
+        context.appPrefs().edit { putBoolean(KEY_ADAPTIVE_INTENSITY, enabled) }
+    }
+
+    fun loadAdaptiveIntensity(context: Context): Boolean =
+        context.appPrefs().getBoolean(KEY_ADAPTIVE_INTENSITY, false)
 
     fun saveAppTheme(context: Context, theme: NightShieldManager.AppTheme) {
         context.appPrefs().edit { putString(KEY_APP_THEME, theme.name) }
@@ -326,6 +334,12 @@ object OverlayHelpers {
         if (loadGradualFade(context)) {
             saveGradualFade(context, false)
             NightShieldManager.setGradualFadeEnabled(false)
+        }
+
+        // 3b. Adaptive intensity → off (Pro-only feature)
+        if (loadAdaptiveIntensity(context)) {
+            saveAdaptiveIntensity(context, false)
+            NightShieldManager.setAdaptiveIntensity(false)
         }
 
         // 4. Schedules → keep at most 1 (free limit)

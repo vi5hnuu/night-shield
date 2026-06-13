@@ -9,6 +9,10 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.content.res.Configuration
 import android.graphics.PixelFormat
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Build
 import android.os.IBinder
 import android.view.WindowManager
@@ -56,6 +60,23 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     private var shakeHelper: ShakeHelper? = null
     /** Absolute deadline (epoch ms) of the active sleep timer; 0 = none. */
     private var sleepTimerEndMs = 0L
+
+    // Adaptive intensity (ambient light)
+    private val sensorManager by lazy { getSystemService(SENSOR_SERVICE) as SensorManager }
+    private val lightSensor by lazy { sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT) }
+    private var lightRegistered = false
+    private var lastLuxUpdateMs = 0L
+    private val lightListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            val now = System.currentTimeMillis()
+            if (now - lastLuxUpdateMs < 1500L) return   // throttle
+            lastLuxUpdateMs = now
+            // Dark room → full strength (1.0); bright (≥200 lux) → floor (0.35).
+            val t = (event.values[0] / 200f).coerceIn(0f, 1f)
+            NightShieldManager.setAdaptiveMultiplier(1f - t * (1f - 0.35f))
+        }
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -144,6 +165,29 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 if (enabled) startEyeBreakReminders()
             }
         }
+
+        // Adaptive intensity — register/unregister the light sensor as the toggle changes (Pro).
+        serviceScope.launch {
+            NightShieldManager.adaptiveIntensity.collect { enabled ->
+                if (enabled && ProGate.isPro.value) registerLightSensor() else unregisterLightSensor()
+            }
+        }
+    }
+
+    private fun registerLightSensor() {
+        val sensor = lightSensor ?: return
+        if (lightRegistered) return
+        lightRegistered = true
+        lastLuxUpdateMs = 0L
+        sensorManager.registerListener(lightListener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+    }
+
+    private fun unregisterLightSensor() {
+        if (lightRegistered) {
+            sensorManager.unregisterListener(lightListener)
+            lightRegistered = false
+        }
+        NightShieldManager.setAdaptiveMultiplier(1f)   // return the filter to full strength
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -349,6 +393,7 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
+        unregisterLightSensor()
         UsageTracker.recordStop(applicationContext)
         shakeHelper?.stop()
         shakeHelper = null
@@ -386,6 +431,7 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         NightShieldManager.setShakeIntensity(OverlayHelpers.loadShakeIntensity(applicationContext))
         NightShieldManager.setGradualFadeEnabled(OverlayHelpers.loadGradualFade(applicationContext) && ProGate.isPro.value)
         NightShieldManager.setDimLevel(OverlayHelpers.loadDimLevel(applicationContext))
+        NightShieldManager.setAdaptiveIntensity(OverlayHelpers.loadAdaptiveIntensity(applicationContext) && ProGate.isPro.value)
         NightShieldManager.setEyeBreakEnabled(OverlayHelpers.loadEyeBreakEnabled(applicationContext))
         NightShieldManager.setDarkModeAutoSync(OverlayHelpers.loadDarkModeSync(applicationContext))
 

@@ -17,6 +17,7 @@ import com.vi5hnu.nightshield.NightShieldManager
 fun FilterOverlay(onTap: () -> Unit) {
     val canvasColor        by NightShieldManager.canvasColor.collectAsState()
     val intensity          by NightShieldManager.filterIntensity.collectAsState()
+    val adaptiveMultiplier by NightShieldManager.adaptiveMultiplier.collectAsState()
     val dimLevel           by NightShieldManager.dimLevel.collectAsState()
     val temporarilyDisabled by NightShieldManager.filterTemporarilyDisabled.collectAsState()
     val gradualFade        by NightShieldManager.gradualFadeEnabled.collectAsState()
@@ -43,7 +44,7 @@ fun FilterOverlay(onTap: () -> Unit) {
         if (temporarilyDisabled) 0f else 1f
     }
 
-    val displayAlpha = canvasColor.alpha * intensity * fadeMultiplier
+    val displayAlpha = canvasColor.alpha * intensity * adaptiveMultiplier * fadeMultiplier
     val displayDim   = dimLevel * fadeMultiplier
 
     // Extra dim: a black layer under the colour tint, darkening below system-min brightness.

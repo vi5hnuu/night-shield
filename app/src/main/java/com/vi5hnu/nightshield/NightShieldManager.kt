@@ -151,6 +151,17 @@ object NightShieldManager {
     val dimLevel: StateFlow<Float> = _dimLevel.asStateFlow()
     fun setDimLevel(level: Float) { _dimLevel.value = level.coerceIn(0f, 0.85f) }
 
+    // ── PRO: Adaptive intensity (ambient light) ────────────────────────────────
+    // When enabled, the service reads the light sensor and scales the tint via
+    // [adaptiveMultiplier] (runtime only, not persisted). The manual intensity stays the ceiling.
+    private val _adaptiveIntensity = MutableStateFlow(false)
+    val adaptiveIntensity: StateFlow<Boolean> = _adaptiveIntensity.asStateFlow()
+    fun setAdaptiveIntensity(enabled: Boolean) { _adaptiveIntensity.value = enabled }
+
+    private val _adaptiveMultiplier = MutableStateFlow(1f)
+    val adaptiveMultiplier: StateFlow<Float> = _adaptiveMultiplier.asStateFlow()
+    fun setAdaptiveMultiplier(value: Float) { _adaptiveMultiplier.value = value.coerceIn(0.2f, 1f) }
+
     // ── Temporarily disabled (per-app accessibility override) ─────────────────
     private val _filterTemporarilyDisabled = MutableStateFlow(false)
     val filterTemporarilyDisabled: StateFlow<Boolean> = _filterTemporarilyDisabled.asStateFlow()

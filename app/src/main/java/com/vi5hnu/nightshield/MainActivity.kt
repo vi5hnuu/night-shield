@@ -85,6 +85,7 @@ class MainActivity : ComponentActivity() {
         NightShieldManager.setShakeIntensity(OverlayHelpers.loadShakeIntensity(applicationContext))
         NightShieldManager.setGradualFadeEnabled(OverlayHelpers.loadGradualFade(applicationContext) && ProGate.isPro.value)
         NightShieldManager.setDimLevel(OverlayHelpers.loadDimLevel(applicationContext))
+        NightShieldManager.setAdaptiveIntensity(OverlayHelpers.loadAdaptiveIntensity(applicationContext) && ProGate.isPro.value)
         NightShieldManager.setAppTheme(OverlayHelpers.loadAppTheme(applicationContext))
         NightShieldManager.setWidgetStyle(OverlayHelpers.loadWidgetStyle(applicationContext))
 
@@ -248,6 +249,7 @@ class MainActivity : ComponentActivity() {
         OverlayHelpers.saveShakeIntensity(this, NightShieldManager.shakeIntensity.value)
         OverlayHelpers.saveGradualFade(this, NightShieldManager.gradualFadeEnabled.value && ProGate.isPro.value)
         OverlayHelpers.saveDimLevel(this, NightShieldManager.dimLevel.value)
+        OverlayHelpers.saveAdaptiveIntensity(this, NightShieldManager.adaptiveIntensity.value && ProGate.isPro.value)
         OverlayHelpers.saveAppTheme(this, NightShieldManager.appTheme.value)
         OverlayHelpers.saveWidgetStyle(this, NightShieldManager.widgetStyle.value)
         OverlayHelpers.saveSchedules(this, NightShieldManager.schedules.value)
