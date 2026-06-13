@@ -55,6 +55,7 @@ import com.vi5hnu.nightshield.AppFilterConfig
 import com.vi5hnu.nightshield.BackupHelper
 import com.vi5hnu.nightshield.BillingManager
 import com.vi5hnu.nightshield.FilterProfile
+import com.vi5hnu.nightshield.BatteryHelpers
 import com.vi5hnu.nightshield.BedtimeHelper
 import com.vi5hnu.nightshield.NightShieldController
 import com.vi5hnu.nightshield.NightShieldManager
@@ -1318,16 +1319,16 @@ private fun BatteryOptBanner(context: Context) {
                 }
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(
-                        onClick = {
-                            context.startActivity(
-                                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                    data = android.net.Uri.parse("package:${context.packageName}")
-                                }
-                            )
-                        },
+                        onClick = { BatteryHelpers.requestIgnoreBatteryOptimizations(context) },
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(stringResource(R.string.battery_opt_fix), style = MaterialTheme.typography.labelMedium)
+                    }
+                    TextButton(
+                        onClick = { BatteryHelpers.openAutoStartSettings(context) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text("Auto-start", style = MaterialTheme.typography.labelMedium)
                     }
                     TextButton(
                         onClick = { dismissed = true; OverlayHelpers.saveBatteryBannerDismissed(context) },
