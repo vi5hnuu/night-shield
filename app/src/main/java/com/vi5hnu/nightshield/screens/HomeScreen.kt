@@ -60,6 +60,7 @@ import com.vi5hnu.nightshield.BedtimeHelper
 import com.vi5hnu.nightshield.NightShieldController
 import com.vi5hnu.nightshield.NightShieldManager
 import com.vi5hnu.nightshield.OverlayHelpers
+import com.vi5hnu.nightshield.SunTimes
 import com.vi5hnu.nightshield.ProGate
 import com.vi5hnu.nightshield.R
 import com.vi5hnu.nightshield.ScheduleAction
@@ -88,6 +89,9 @@ fun HomeScreen(
     onRestorePurchase: () -> Unit = {},
     onExportSettings: () -> Unit = {},
     onImportSettings: () -> Unit = {},
+    onEnableAutoSchedule: () -> Unit = {},
+    onDisableAutoSchedule: () -> Unit = {},
+    onRefreshLocation: () -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -737,6 +741,16 @@ fun HomeScreen(
 
                 ScheduleSection(isPro = isPro, onShowUpgrade = { showUpgradeScreen = true })
 
+                Spacer(Modifier.height(12.dp))
+
+                AutoScheduleSection(
+                    isPro = isPro,
+                    onShowUpgrade = { showUpgradeScreen = true },
+                    onEnable = onEnableAutoSchedule,
+                    onDisable = onDisableAutoSchedule,
+                    onRefresh = onRefreshLocation,
+                )
+
                 Spacer(Modifier.height(24.dp))
 
                 // ── Per-app filter ────────────────────────────────────────────
@@ -1172,6 +1186,65 @@ private fun ScheduleEntryRow(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                 modifier = Modifier.size(18.dp)
             )
+        }
+    }
+}
+
+// ── PRO: Auto sunset/sunrise section ───────────────────────────────────────────
+
+@Composable
+private fun AutoScheduleSection(
+    isPro: Boolean,
+    onShowUpgrade: () -> Unit,
+    onEnable: () -> Unit,
+    onDisable: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    val context = LocalContext.current
+    val enabled by NightShieldManager.autoScheduleEnabled.collectAsState()
+    val city by NightShieldManager.autoCity.collectAsState()
+
+    SettingsCard {
+        Tile(
+            id = R.drawable.ic_moon_24,
+            title = "Auto Sunset / Sunrise",
+            subtitle = "Filter follows your local sunset & sunrise times",
+        ) {
+            if (isPro) {
+                Switch(checked = enabled, onCheckedChange = { if (it) onEnable() else onDisable() })
+            } else {
+                ProBadge(onClick = onShowUpgrade)
+            }
+        }
+        if (isPro && enabled) {
+            SettingsDivider()
+            val loc = remember(city) { OverlayHelpers.loadAutoLocation(context) }
+            val times = remember(loc) { loc?.let { SunTimes.compute(it.lat, it.lon, java.time.LocalDate.now()) } }
+            val zone = java.time.ZoneId.systemDefault()
+            val fmt = remember { java.time.format.DateTimeFormatter.ofPattern("HH:mm") }
+            fun fmtMs(ms: Long) = java.time.Instant.ofEpochMilli(ms).atZone(zone).toLocalTime().format(fmt)
+            val sunrise = times?.let { fmtMs(it.first) } ?: "--:--"
+            val sunset = times?.let { fmtMs(it.second) } ?: "--:--"
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text(
+                        city.ifBlank { "Location set" },
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        "🌙 on at $sunset   ·   ☀️ off at $sunrise",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = onRefresh) { Text("Refresh") }
+            }
         }
     }
 }

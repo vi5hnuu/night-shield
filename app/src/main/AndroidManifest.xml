@@ -24,6 +24,9 @@
     <!-- Battery optimization prompt -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Coarse location: only used (with consent) to compute local sunrise/sunset for auto-schedule -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <!-- Android 11+ package visibility: lets us enumerate installed apps for per-app filter -->
     <queries>
         <intent>

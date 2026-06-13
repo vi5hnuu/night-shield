@@ -211,6 +211,16 @@ object NightShieldManager {
         _appFilterConfigs.value = configs
     }
 
+    // ── PRO: Auto sunset/sunrise schedule ──────────────────────────────────────
+    private val _autoScheduleEnabled = MutableStateFlow(false)
+    val autoScheduleEnabled: StateFlow<Boolean> = _autoScheduleEnabled.asStateFlow()
+    fun setAutoScheduleEnabled(enabled: Boolean) { _autoScheduleEnabled.value = enabled }
+
+    /** Cached city name for display in the auto-schedule UI ("" = none yet). */
+    private val _autoCity = MutableStateFlow("")
+    val autoCity: StateFlow<String> = _autoCity.asStateFlow()
+    fun setAutoCity(city: String) { _autoCity.value = city }
+
     // ── PRO: Gradual fade-in ───────────────────────────────────────────────────
     private val _gradualFadeEnabled = MutableStateFlow(false)
     val gradualFadeEnabled: StateFlow<Boolean> = _gradualFadeEnabled.asStateFlow()
