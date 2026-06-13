@@ -69,14 +69,14 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         UsageTracker.recordStart()
         bootstrapManagerIfNeeded()
-        // Claim the active state FIRST — before stopping the monitor — so any concurrent
-        // syncShakeMonitor (e.g. MainActivity.onResume firing alongside this start) reads
-        // isActive=true and won't race to restart the monitor we're about to stop. This also
-        // covers START_STICKY restarts (onCreate runs again with intent=null in onStartCommand).
+        // Claim the active state now (also covers START_STICKY restarts, which re-run onCreate
+        // with intent=null in onStartCommand). NOTE: the shake monitor is deliberately NOT stopped
+        // here — it is stopped only AFTER startForeground() succeeds (see onStartCommand), so the
+        // app keeps the foreground-service state that grants the background-start exemption while
+        // this service promotes itself. Stopping the monitor first dropped that exemption and
+        // intermittently got startForeground() denied (widget flips ON but the overlay never sticks).
         OverlayHelpers.setOverlaysActive(applicationContext, true)
         NightShieldManager.setFilterActive(true)
-        // Filter is starting — stop the shake monitor that runs when filter is off
-        ShakeMonitorService.stop(applicationContext)
 
         // Shake-to-OFF while the filter is on (continuous-accelerometer Seismic detector).
         // onDestroy is the single writer that clears the active flag, refreshes the widget,
@@ -156,11 +156,23 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         showOverlay()
         createNotificationChannel()
         val notification = createNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            // Foreground promotion was denied (e.g. background-start exemption lost). Abort cleanly
+            // so the flag/widget don't get stuck ON; onDestroy clears them and the monitor — which
+            // we have NOT stopped yet — stays alive to handle the next shake.
+            stopSelf()
+            return START_NOT_STICKY
         }
+
+        // Now firmly foreground: safe to stop the shake monitor without dropping the FGS state.
+        ShakeMonitorService.stop(applicationContext)
+
         if (isSunrise && ProGate.isPro.value) startSunriseMode()
         return START_STICKY
     }
