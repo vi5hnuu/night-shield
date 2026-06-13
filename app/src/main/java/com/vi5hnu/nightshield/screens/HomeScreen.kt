@@ -55,6 +55,7 @@ import com.vi5hnu.nightshield.AppFilterConfig
 import com.vi5hnu.nightshield.BackupHelper
 import com.vi5hnu.nightshield.BillingManager
 import com.vi5hnu.nightshield.FilterProfile
+import com.vi5hnu.nightshield.BedtimeHelper
 import com.vi5hnu.nightshield.NightShieldController
 import com.vi5hnu.nightshield.NightShieldManager
 import com.vi5hnu.nightshield.OverlayHelpers
@@ -401,6 +402,24 @@ fun HomeScreen(
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold
                             )
+                        }
+
+                        // One-tap Bedtime routine — warm + dim + 30-min sleep timer, then activate.
+                        if (hasOverlayPermission && !areServicesActive) {
+                            Spacer(Modifier.height(10.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    BedtimeHelper.apply(context)
+                                },
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                shape = RoundedCornerShape(16.dp),
+                            ) {
+                                Text(
+                                    text = "🌙  Bedtime  ·  warm, dim, 30-min timer",
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            }
                         }
 
                         if (!hasOverlayPermission) {
