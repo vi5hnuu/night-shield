@@ -135,6 +135,13 @@ object NightShieldManager {
     val filterIntensity: StateFlow<Float> = _filterIntensity.asStateFlow()
     fun setFilterIntensity(intensity: Float) { _filterIntensity.value = intensity.coerceIn(0.1f, 1.0f) }
 
+    // ── Extra screen dimming ──────────────────────────────────────────────────
+    // A black layer drawn under the colour tint so the screen can go darker than the
+    // system-minimum brightness. 0 = off.
+    private val _dimLevel = MutableStateFlow(0f)
+    val dimLevel: StateFlow<Float> = _dimLevel.asStateFlow()
+    fun setDimLevel(level: Float) { _dimLevel.value = level.coerceIn(0f, 0.85f) }
+
     // ── Temporarily disabled (per-app accessibility override) ─────────────────
     private val _filterTemporarilyDisabled = MutableStateFlow(false)
     val filterTemporarilyDisabled: StateFlow<Boolean> = _filterTemporarilyDisabled.asStateFlow()

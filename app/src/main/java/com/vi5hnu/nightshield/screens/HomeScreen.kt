@@ -579,6 +579,25 @@ fun HomeScreen(
                     }
                     SettingsDivider()
 
+                    // Extra screen dimming — darkens below system-minimum brightness
+                    val dimLevel by NightShieldManager.dimLevel.collectAsState()
+                    Tile(R.drawable.ic_brightness_24, "Screen dimming", "Darken the screen beyond the system minimum") {
+                        Slider(
+                            value = dimLevel,
+                            onValueChange = { NightShieldManager.setDimLevel(it) },
+                            onValueChangeFinished = {
+                                OverlayHelpers.saveDimLevel(context, NightShieldManager.dimLevel.value)
+                            },
+                            valueRange = 0f..0.85f,
+                            modifier = Modifier.width(120.dp),
+                            colors = SliderDefaults.colors(
+                                thumbColor = MaterialTheme.colorScheme.primary,
+                                activeTrackColor = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                    }
+                    SettingsDivider()
+
                     // PRO — Gradual Fade-in
                     val gradualFade by NightShieldManager.gradualFadeEnabled.collectAsState()
                     Tile(

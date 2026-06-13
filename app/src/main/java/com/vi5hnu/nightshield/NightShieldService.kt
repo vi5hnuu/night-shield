@@ -385,6 +385,7 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         NightShieldManager.setAllowShake(allowShake)
         NightShieldManager.setShakeIntensity(OverlayHelpers.loadShakeIntensity(applicationContext))
         NightShieldManager.setGradualFadeEnabled(OverlayHelpers.loadGradualFade(applicationContext) && ProGate.isPro.value)
+        NightShieldManager.setDimLevel(OverlayHelpers.loadDimLevel(applicationContext))
         NightShieldManager.setEyeBreakEnabled(OverlayHelpers.loadEyeBreakEnabled(applicationContext))
         NightShieldManager.setDarkModeAutoSync(OverlayHelpers.loadDarkModeSync(applicationContext))
 

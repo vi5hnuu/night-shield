@@ -25,6 +25,7 @@ object BackupHelper {
         val (color, intensity, allowShake) = OverlayHelpers.loadFilterSettings(context)
         root.put("filterColorArgb", color.toArgb())
         root.put("filterIntensity", intensity.toDouble())
+        root.put("dimLevel", NightShieldManager.dimLevel.value.toDouble())
         root.put("allowShake", allowShake)
         root.put("shakeIntensity", NightShieldManager.shakeIntensity.value.name)
         root.put("gradualFadeEnabled", NightShieldManager.gradualFadeEnabled.value)
@@ -87,6 +88,7 @@ object BackupHelper {
         // Filter settings
         val colorArgb = root.optInt("filterColorArgb", NightShieldManager.TemperaturePreset.AMBER.color.toArgb())
         val intensity = root.optDouble("filterIntensity", 0.6).toFloat().coerceIn(0.1f, 1.0f)
+        val dimLevel = root.optDouble("dimLevel", 0.0).toFloat().coerceIn(0f, 0.85f)
         val allowShake = root.optBoolean("allowShake", true)
         val shakeIntensityName = root.optString("shakeIntensity", NightShieldManager.ShakeIntensity.NORMAL.name)
         val gradualFade = root.optBoolean("gradualFadeEnabled", false)
@@ -97,6 +99,7 @@ object BackupHelper {
 
         NightShieldManager.setCanvasColor(androidx.compose.ui.graphics.Color(colorArgb))
         NightShieldManager.setFilterIntensity(intensity)
+        NightShieldManager.setDimLevel(dimLevel)
         NightShieldManager.setAllowShake(allowShake)
         NightShieldManager.setShakeIntensity(
             runCatching { NightShieldManager.ShakeIntensity.valueOf(shakeIntensityName) }
@@ -184,6 +187,7 @@ object BackupHelper {
         OverlayHelpers.saveAppTheme(context, NightShieldManager.appTheme.value)
         OverlayHelpers.saveWidgetStyle(context, NightShieldManager.widgetStyle.value)
         OverlayHelpers.saveGradualFade(context, gradualFade && ProGate.isPro.value)
+        OverlayHelpers.saveDimLevel(context, dimLevel)
         OverlayHelpers.saveEyeBreakEnabled(context, eyeBreakEnabled)
         OverlayHelpers.saveDarkModeSync(context, darkModeSync)
 

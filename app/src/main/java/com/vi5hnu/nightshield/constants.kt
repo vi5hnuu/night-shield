@@ -33,6 +33,7 @@ object OverlayHelpers {
     private const val KEY_EYE_BREAK_ENABLED          = "eye_break_enabled"
     private const val KEY_DARK_MODE_SYNC             = "dark_mode_auto_sync"
     private const val KEY_BATTERY_BANNER_DISMISSED   = "battery_banner_dismissed"
+    private const val KEY_DIM_LEVEL                  = "screen_dim_level"
 
     fun setOverlaysActive(context: Context, isActive: Boolean) {
         context.appPrefs().edit { putBoolean(KEY_ACTIVE, isActive) }
@@ -84,6 +85,13 @@ object OverlayHelpers {
 
     fun loadGradualFade(context: Context): Boolean =
         context.appPrefs().getBoolean(KEY_GRADUAL_FADE, false)
+
+    fun saveDimLevel(context: Context, level: Float) {
+        context.appPrefs().edit { putFloat(KEY_DIM_LEVEL, level) }
+    }
+
+    fun loadDimLevel(context: Context): Float =
+        context.appPrefs().getFloat(KEY_DIM_LEVEL, 0f)
 
     fun saveAppTheme(context: Context, theme: NightShieldManager.AppTheme) {
         context.appPrefs().edit { putString(KEY_APP_THEME, theme.name) }
