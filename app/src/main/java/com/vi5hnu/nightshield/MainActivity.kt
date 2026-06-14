@@ -214,8 +214,9 @@ class MainActivity : ComponentActivity() {
                                 NightShieldManager.filterIntensity.value,
                                 it,
                             )
-                            // Shake toggle changed — start or stop the background monitor.
+                            // Shake toggle changed — start or stop the background monitor + in-app detector.
                             NightShieldController.syncShakeMonitor(applicationContext)
+                            syncInAppShake()
                         },
                         allowShake           = NightShieldManager.allowShake.collectAsState().value,
                         areServicesActive    = areServicesActive,
@@ -288,13 +289,37 @@ class MainActivity : ComponentActivity() {
 
         // Keep the background shake monitor in sync with the current state.
         NightShieldController.syncShakeMonitor(applicationContext)
+        // In-app shake: works even in battery-saver mode (background monitor off) since the
+        // in-app composable detector was removed. Deduped with the service/monitor via tryShakeToggle.
+        syncInAppShake()
 
         AppOpenAdManager.showAdIfAvailable(this)
     }
 
     override fun onPause() {
         super.onPause()
+        inAppShake?.stop()
+        inAppShake = null
         persistSettings()
+    }
+
+    // ── In-app shake (active only while the activity is resumed) ──────────────
+    private var inAppShake: ShakeHelper? = null
+
+    private fun syncInAppShake() {
+        if (NightShieldManager.allowShake.value) {
+            if (inAppShake == null) {
+                inAppShake = ShakeHelper(this) {
+                    NightShieldManager.tryShakeToggle {
+                        ShakeHelper.hapticFeedback(this)
+                        NightShieldController.toggle(this)   // service updates flag/flow/widget
+                    }
+                }.also { it.start() }
+            }
+        } else {
+            inAppShake?.stop()
+            inAppShake = null
+        }
     }
 
     private fun persistSettings() {
