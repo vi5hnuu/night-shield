@@ -40,6 +40,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 
@@ -164,6 +165,12 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 eyeBreakJob = null
                 if (enabled) startEyeBreakReminders()
             }
+        }
+
+        // Keep the notification's "Intensity X%" text in sync when intensity changes
+        // (manual slider, widget, or ±10% notification buttons). Skip the initial emit.
+        serviceScope.launch {
+            NightShieldManager.filterIntensity.drop(1).collect { if (isRunning) updateNotification() }
         }
 
         // Adaptive intensity — register/unregister the light sensor as the toggle changes (Pro).
