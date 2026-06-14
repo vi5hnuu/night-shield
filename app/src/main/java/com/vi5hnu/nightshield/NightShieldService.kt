@@ -40,6 +40,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
@@ -167,10 +168,18 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             }
         }
 
-        // Keep the notification's "Intensity X%" text in sync when intensity changes
-        // (manual slider, widget, or ±10% notification buttons). Skip the initial emit.
+        // Keep the notification + widgets' intensity text in sync when intensity changes
+        // (manual slider, widget, ±10% buttons). Debounced via collectLatest+delay so a slider
+        // drag (which emits ~60×/s) doesn't spam notify() and hit the ~10/s rate limit.
         serviceScope.launch {
-            NightShieldManager.filterIntensity.drop(1).collect { if (isRunning) updateNotification() }
+            NightShieldManager.filterIntensity.drop(1).collectLatest {
+                delay(400)
+                if (isRunning) {
+                    updateNotification()
+                    NightShieldWidgetProvider.updateWidget(applicationContext)
+                    IntensityWidgetProvider.updateAll(applicationContext)
+                }
+            }
         }
 
         // Adaptive intensity — register/unregister the light sensor as the toggle changes (Pro).

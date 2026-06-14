@@ -57,6 +57,7 @@ import com.vi5hnu.nightshield.BillingManager
 import com.vi5hnu.nightshield.FilterProfile
 import com.vi5hnu.nightshield.BatteryHelpers
 import com.vi5hnu.nightshield.BedtimeHelper
+import com.vi5hnu.nightshield.IntensityWidgetProvider
 import com.vi5hnu.nightshield.NightShieldController
 import com.vi5hnu.nightshield.NightShieldManager
 import com.vi5hnu.nightshield.OverlayHelpers
@@ -609,6 +610,7 @@ fun HomeScreen(
                                     NightShieldManager.filterIntensity.value,
                                     NightShieldManager.allowShake.value,
                                 )
+                                IntensityWidgetProvider.updateAll(context)
                             },
                             valueRange = 0.1f..1.0f,
                             modifier = Modifier.width(120.dp),
