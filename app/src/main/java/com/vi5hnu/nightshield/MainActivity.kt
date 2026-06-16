@@ -293,8 +293,13 @@ class MainActivity : ComponentActivity() {
         // in-app composable detector was removed. Deduped with the service/monitor via tryShakeToggle.
         syncInAppShake()
 
-        AppOpenAdManager.showAdIfAvailable(this)
+        // Don't show an app-open ad on the FIRST resume (the cold/intentional open) — that just
+        // blacks out the screen the user is trying to reach. Only show on later returns to the app.
+        if (hasResumedOnce) AppOpenAdManager.showAdIfAvailable(this)
+        hasResumedOnce = true
     }
+
+    private var hasResumedOnce = false
 
     override fun onPause() {
         super.onPause()

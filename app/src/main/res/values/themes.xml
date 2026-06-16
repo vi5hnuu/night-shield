@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.NightShield" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.NightShield" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- Dark launch window so a cold start shows the app's dark background, not a black/white
+             flash, while onCreate initialises. -->
+        <item name="android:windowBackground">@color/launch_background</item>
+    </style>
 </resources>
