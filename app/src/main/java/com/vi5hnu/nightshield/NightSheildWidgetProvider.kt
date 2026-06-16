@@ -62,13 +62,20 @@ class NightShieldWidgetProvider : AppWidgetProvider() {
                     views.setViewVisibility(R.id.widgetIntensityText, View.GONE)
                 }
                 NightShieldManager.WidgetStyle.DETAILED -> {
-                    val intensityPct = (OverlayHelpers.loadFilterSettings(context).second * 100).toInt()
                     views.setViewVisibility(R.id.widgetTextStrip, View.VISIBLE)
                     views.setViewVisibility(R.id.widgetStatusText, View.VISIBLE)
                     views.setTextViewText(R.id.widgetStatusText, if (isRunning) "ON" else "OFF")
-                    views.setViewVisibility(R.id.widgetSeparator, View.VISIBLE)
-                    views.setViewVisibility(R.id.widgetIntensityText, View.VISIBLE)
-                    views.setTextViewText(R.id.widgetIntensityText, "$intensityPct%")
+                    // Intensity is only meaningful while the filter is running — hide it when off
+                    // (otherwise it reads as a stray "%" next to OFF).
+                    if (isRunning) {
+                        val intensityPct = (OverlayHelpers.loadFilterSettings(context).second * 100).toInt()
+                        views.setViewVisibility(R.id.widgetSeparator, View.VISIBLE)
+                        views.setViewVisibility(R.id.widgetIntensityText, View.VISIBLE)
+                        views.setTextViewText(R.id.widgetIntensityText, "$intensityPct%")
+                    } else {
+                        views.setViewVisibility(R.id.widgetSeparator, View.GONE)
+                        views.setViewVisibility(R.id.widgetIntensityText, View.GONE)
+                    }
                 }
             }
 
