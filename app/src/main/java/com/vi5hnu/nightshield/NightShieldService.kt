@@ -210,8 +210,9 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         val isSunrise = intent?.getBooleanExtra(EXTRA_SUNRISE, false) ?: false
 
         // Active state was claimed in onCreate (which always runs before onStartCommand, including
-        // on START_STICKY restarts). Refresh the widget here so it reflects ON immediately.
+        // on START_STICKY restarts). Refresh the widgets here so they reflect ON immediately.
         NightShieldWidgetProvider.updateWidget(applicationContext)
+        IntensityWidgetProvider.updateAll(applicationContext)
 
         showOverlay()
         createNotificationChannel()
@@ -422,6 +423,7 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         OverlayHelpers.dispose(applicationContext)
         NightShieldManager.setFilterActive(false)
         NightShieldWidgetProvider.updateWidget(applicationContext)
+        IntensityWidgetProvider.updateAll(applicationContext)
         // Filter is now off — reconcile the shake monitor so shake-to-ON keeps working.
         NightShieldController.syncShakeMonitor(applicationContext)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)

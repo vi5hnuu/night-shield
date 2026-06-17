@@ -6,38 +6,51 @@
     android:orientation="horizontal"
     android:gravity="center"
     android:background="@drawable/widget_pill_bg"
-    android:padding="6dp">
+    android:padding="4dp">
 
+    <!-- Toggle the filter on/off -->
+    <ImageView
+        android:id="@+id/intensityToggle"
+        android:layout_width="34dp"
+        android:layout_height="34dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/shield_inactive"
+        android:contentDescription="Toggle filter" />
+
+    <!-- − intensity -->
     <TextView
         android:id="@+id/intensityMinus"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="34dp"
+        android:layout_height="34dp"
+        android:layout_marginStart="2dp"
         android:gravity="center"
         android:text="−"
         android:textColor="#FFFFFF"
-        android:textSize="22sp"
+        android:textSize="20sp"
         android:textStyle="bold"
         android:contentDescription="Decrease intensity" />
 
+    <!-- current % (tap to open the app) -->
     <TextView
         android:id="@+id/intensityValue"
-        android:layout_width="0dp"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
+        android:minWidth="40dp"
         android:gravity="center"
         android:text="60%"
         android:textColor="#FFFFFF"
-        android:textSize="16sp"
+        android:textSize="15sp"
         android:textStyle="bold" />
 
+    <!-- + intensity -->
     <TextView
         android:id="@+id/intensityPlus"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="34dp"
+        android:layout_height="34dp"
         android:gravity="center"
         android:text="+"
         android:textColor="#FFFFFF"
-        android:textSize="22sp"
+        android:textSize="20sp"
         android:textStyle="bold"
         android:contentDescription="Increase intensity" />
 
