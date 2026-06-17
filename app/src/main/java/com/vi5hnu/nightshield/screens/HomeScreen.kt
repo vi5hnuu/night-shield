@@ -1010,10 +1010,10 @@ private fun SleepTimerRow() {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
         // Split into rows of 4 so chips never get squished on narrow screens
         val rows = options.indices.chunked(4)
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             rows.forEach { indices ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1389,43 +1389,37 @@ private fun BatteryOptBanner(context: Context) {
                 containerColor = MaterialTheme.colorScheme.secondaryContainer
             )
         ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Icon(
-                    painterResource(R.drawable.ic_notification_24),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.size(20.dp)
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.battery_opt_title),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        fontWeight = FontWeight.SemiBold
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_notification_24),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.size(20.dp)
                     )
-                    Text(
-                        stringResource(R.string.battery_opt_body),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.battery_opt_title),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            stringResource(R.string.battery_opt_body),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                        )
+                    }
                 }
-                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(
-                        onClick = { BatteryHelpers.requestIgnoreBatteryOptimizations(context) },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(stringResource(R.string.battery_opt_fix), style = MaterialTheme.typography.labelMedium)
-                    }
-                    TextButton(
-                        onClick = { BatteryHelpers.openAutoStartSettings(context) },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text("Auto-start", style = MaterialTheme.typography.labelMedium)
-                    }
+                // Actions on a single row below the text so they don't stretch the card vertically.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     TextButton(
                         onClick = { dismissed = true; OverlayHelpers.saveBatteryBannerDismissed(context) },
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
@@ -1435,6 +1429,19 @@ private fun BatteryOptBanner(context: Context) {
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f)
                         )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    TextButton(
+                        onClick = { BatteryHelpers.openAutoStartSettings(context) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text("Auto-start", style = MaterialTheme.typography.labelMedium)
+                    }
+                    TextButton(
+                        onClick = { BatteryHelpers.requestIgnoreBatteryOptimizations(context) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(stringResource(R.string.battery_opt_fix), style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
