@@ -16,4 +16,8 @@ local.properties
 .idea
 **.aab
 .claude/*.jks
+*.jks
 *.keystore
+# Signing secrets — never commit
+key.properties
+keystore.properties
