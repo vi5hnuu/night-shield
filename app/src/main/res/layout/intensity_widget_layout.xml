@@ -1,57 +1,69 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Transparent root so the visible pill is only as tall as its content (no big empty pill
+     filling the whole cell). The pill is centred; the surrounding transparent area is invisible. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/intensity_widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="horizontal"
+    android:orientation="vertical"
     android:gravity="center"
-    android:background="@drawable/widget_pill_bg"
-    android:padding="4dp">
+    android:background="@android:color/transparent">
 
-    <!-- Toggle the filter on/off -->
-    <ImageView
-        android:id="@+id/intensityToggle"
-        android:layout_width="34dp"
-        android:layout_height="34dp"
-        android:scaleType="fitCenter"
-        android:src="@drawable/shield_inactive"
-        android:contentDescription="Toggle filter" />
-
-    <!-- − intensity -->
-    <TextView
-        android:id="@+id/intensityMinus"
-        android:layout_width="34dp"
-        android:layout_height="34dp"
-        android:layout_marginStart="2dp"
-        android:gravity="center"
-        android:text="−"
-        android:textColor="#FFFFFF"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:contentDescription="Decrease intensity" />
-
-    <!-- current % (tap to open the app) -->
-    <TextView
-        android:id="@+id/intensityValue"
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:minWidth="40dp"
+        android:orientation="horizontal"
         android:gravity="center"
-        android:text="60%"
-        android:textColor="#FFFFFF"
-        android:textSize="15sp"
-        android:textStyle="bold" />
+        android:background="@drawable/widget_pill_bg"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="4dp">
 
-    <!-- + intensity -->
-    <TextView
-        android:id="@+id/intensityPlus"
-        android:layout_width="34dp"
-        android:layout_height="34dp"
-        android:gravity="center"
-        android:text="+"
-        android:textColor="#FFFFFF"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:contentDescription="Increase intensity" />
+        <!-- Toggle the filter on/off -->
+        <ImageView
+            android:id="@+id/intensityToggle"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/shield_inactive"
+            android:contentDescription="Toggle filter" />
+
+        <!-- − intensity -->
+        <TextView
+            android:id="@+id/intensityMinus"
+            android:layout_width="34dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="2dp"
+            android:gravity="center"
+            android:text="−"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:contentDescription="Decrease intensity" />
+
+        <!-- current % (tap to open the app) -->
+        <TextView
+            android:id="@+id/intensityValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="40dp"
+            android:gravity="center"
+            android:text="60%"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <!-- + intensity -->
+        <TextView
+            android:id="@+id/intensityPlus"
+            android:layout_width="34dp"
+            android:layout_height="32dp"
+            android:gravity="center"
+            android:text="+"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:contentDescription="Increase intensity" />
+
+    </LinearLayout>
 
 </LinearLayout>
