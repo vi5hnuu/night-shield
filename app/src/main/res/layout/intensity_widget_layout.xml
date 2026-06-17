@@ -15,7 +15,8 @@
         android:orientation="horizontal"
         android:gravity="center"
         android:background="@drawable/widget_pill_bg"
-        android:paddingHorizontal="6dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="8dp"
         android:paddingVertical="4dp">
 
         <!-- Toggle the filter on/off -->
