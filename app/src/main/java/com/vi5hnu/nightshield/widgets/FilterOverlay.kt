@@ -10,12 +10,15 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import com.vi5hnu.nightshield.NightShieldManager
 
 @Composable
 fun FilterOverlay(onTap: () -> Unit) {
     val canvasColor        by NightShieldManager.canvasColor.collectAsState()
     val intensity          by NightShieldManager.filterIntensity.collectAsState()
+    val adaptiveMultiplier by NightShieldManager.adaptiveMultiplier.collectAsState()
+    val dimLevel           by NightShieldManager.dimLevel.collectAsState()
     val temporarilyDisabled by NightShieldManager.filterTemporarilyDisabled.collectAsState()
     val gradualFade        by NightShieldManager.gradualFadeEnabled.collectAsState()
 
@@ -41,7 +44,17 @@ fun FilterOverlay(onTap: () -> Unit) {
         if (temporarilyDisabled) 0f else 1f
     }
 
-    val displayAlpha = canvasColor.alpha * intensity * fadeMultiplier
+    val displayAlpha = canvasColor.alpha * intensity * adaptiveMultiplier * fadeMultiplier
+    val displayDim   = dimLevel * fadeMultiplier
+
+    // Extra dim: a black layer under the colour tint, darkening below system-min brightness.
+    if (displayDim > 0.01f) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = displayDim))
+        )
+    }
 
     if (displayAlpha > 0.01f) {
         Box(

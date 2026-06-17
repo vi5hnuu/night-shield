@@ -11,20 +11,17 @@ import android.content.Intent
 class IntensityActionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val current = NightShieldManager.filterIntensity.value
+        // Read the saved value (not the in-memory flow) so this is correct even in a cold process
+        // spun up just to handle a widget tap.
+        val (color, current, allowShake) = OverlayHelpers.loadFilterSettings(context)
         val next = when (intent.action) {
             ACTION_INCREASE -> (current + 0.10f).coerceAtMost(1.0f)
             ACTION_DECREASE -> (current - 0.10f).coerceAtLeast(0.1f)
             else -> return
         }
-        NightShieldManager.setFilterIntensity(next)
-        // Persist so the new value survives a service restart
-        OverlayHelpers.saveFilterSettings(
-            context,
-            NightShieldManager.canvasColor.value,
-            next,
-            NightShieldManager.allowShake.value,
-        )
+        NightShieldManager.setFilterIntensity(next)       // live overlay (if the service is running)
+        OverlayHelpers.saveFilterSettings(context, color, next, allowShake)
+        IntensityWidgetProvider.updateAll(context)        // refresh the % shown on the widget
     }
 
     companion object {

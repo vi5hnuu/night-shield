@@ -3,6 +3,7 @@ package com.vi5hnu.nightshield
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -96,15 +97,34 @@ class ShakeMonitorService : Service() {
             .createNotificationChannel(channel)
     }
 
-    private fun buildNotification(): Notification =
-        NotificationCompat.Builder(this, CHANNEL_ID)
+    private fun buildNotification(): Notification {
+        // "Turn on" action → toggles via the widget provider (routes through the controller).
+        val turnOnIntent = PendingIntent.getBroadcast(
+            this, 0,
+            Intent(this, NightShieldWidgetProvider::class.java).apply {
+                action = NightShieldWidgetProvider.TOGGLE_SHIELD_SIGNAL
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        // Tapping the body opens the app.
+        val openAppIntent = PendingIntent.getActivity(
+            this, 1,
+            Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_24)
             .setContentTitle(getString(R.string.app_name))
             .setContentText("Shake to activate night filter")
+            .setContentIntent(openAppIntent)
+            .addAction(R.drawable.ic_notification_24, "Turn on", turnOnIntent)
             .setSilent(true)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .build()
+    }
 
     companion object {
         private const val CHANNEL_ID = "night_shield_shake_monitor"

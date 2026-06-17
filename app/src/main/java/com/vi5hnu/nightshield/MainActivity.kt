@@ -1,6 +1,8 @@
 package com.vi5hnu.nightshield
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -10,6 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
+import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import com.google.android.gms.ads.MobileAds
 import com.google.android.play.core.review.ReviewManagerFactory
@@ -55,6 +58,55 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // ── Auto sunset/sunrise: location permission + fetch ──────────────────────
+    private val requestLocationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) fetchLocationAndEnable()
+        else Toast.makeText(this, "Location permission is needed for auto sunset/sunrise", Toast.LENGTH_LONG).show()
+    }
+
+    private fun enableAutoSchedule() {
+        if (hasLocationPermission()) fetchLocationAndEnable()
+        else requestLocationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+    }
+
+    private fun disableAutoSchedule() {
+        NightShieldManager.setAutoScheduleEnabled(false)
+        OverlayHelpers.saveAutoScheduleEnabled(this, false)
+        AutoScheduleHelper.reschedule(this)
+    }
+
+    private fun refreshLocation() {
+        if (!hasLocationPermission()) {
+            requestLocationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+            return
+        }
+        Toast.makeText(this, "Refreshing location…", Toast.LENGTH_SHORT).show()
+        LocationHelper.fetchAndCache(this) { city ->
+            if (city != null) {
+                AutoScheduleHelper.reschedule(this)
+                Toast.makeText(this, "Location: $city", Toast.LENGTH_SHORT).show()
+            } else Toast.makeText(this, "Couldn't get location. Try again outdoors.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun fetchLocationAndEnable() {
+        Toast.makeText(this, "Getting your location…", Toast.LENGTH_SHORT).show()
+        LocationHelper.fetchAndCache(this) { city ->
+            if (city != null) {
+                NightShieldManager.setAutoScheduleEnabled(true)
+                OverlayHelpers.saveAutoScheduleEnabled(this, true)
+                AutoScheduleHelper.reschedule(this, activateIfNight = true)
+                Toast.makeText(this, "Auto schedule on · $city", Toast.LENGTH_SHORT).show()
+            } else Toast.makeText(this, "Couldn't get location. Try again outdoors.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun hasLocationPermission() = ContextCompat.checkSelfPermission(
+        this, Manifest.permission.ACCESS_COARSE_LOCATION
+    ) == PackageManager.PERMISSION_GRANTED
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -81,8 +133,14 @@ class MainActivity : ComponentActivity() {
         NightShieldManager.setCanvasColor(color)
         NightShieldManager.setFilterIntensity(intensity)
         NightShieldManager.setAllowShake(allowShake)
+        NightShieldManager.setBackgroundShake(OverlayHelpers.loadBackgroundShake(applicationContext))
         NightShieldManager.setShakeIntensity(OverlayHelpers.loadShakeIntensity(applicationContext))
         NightShieldManager.setGradualFadeEnabled(OverlayHelpers.loadGradualFade(applicationContext) && ProGate.isPro.value)
+        NightShieldManager.setDimLevel(OverlayHelpers.loadDimLevel(applicationContext))
+        NightShieldManager.setAdaptiveIntensity(OverlayHelpers.loadAdaptiveIntensity(applicationContext) && ProGate.isPro.value)
+        NightShieldManager.setAutoScheduleEnabled(OverlayHelpers.loadAutoScheduleEnabled(applicationContext) && ProGate.isPro.value)
+        NightShieldManager.setAutoCity(OverlayHelpers.loadAutoLocation(applicationContext)?.city ?: "")
+        AutoScheduleHelper.reschedule(applicationContext)
         NightShieldManager.setAppTheme(OverlayHelpers.loadAppTheme(applicationContext))
         NightShieldManager.setWidgetStyle(OverlayHelpers.loadWidgetStyle(applicationContext))
 
@@ -156,8 +214,9 @@ class MainActivity : ComponentActivity() {
                                 NightShieldManager.filterIntensity.value,
                                 it,
                             )
-                            // Shake toggle changed — start or stop the background monitor.
+                            // Shake toggle changed — start or stop the background monitor + in-app detector.
                             NightShieldController.syncShakeMonitor(applicationContext)
+                            syncInAppShake()
                         },
                         allowShake           = NightShieldManager.allowShake.collectAsState().value,
                         areServicesActive    = areServicesActive,
@@ -172,6 +231,9 @@ class MainActivity : ComponentActivity() {
                         onRestorePurchase    = { BillingManager.restore(this@MainActivity) },
                         onExportSettings     = { createDocumentLauncher.launch("nightshield_backup.json") },
                         onImportSettings     = { openDocumentLauncher.launch(arrayOf("application/json")) },
+                        onEnableAutoSchedule = { enableAutoSchedule() },
+                        onDisableAutoSchedule = { disableAutoSchedule() },
+                        onRefreshLocation    = { refreshLocation() },
                     )
                 }
             }
@@ -227,13 +289,42 @@ class MainActivity : ComponentActivity() {
 
         // Keep the background shake monitor in sync with the current state.
         NightShieldController.syncShakeMonitor(applicationContext)
+        // In-app shake: works even in battery-saver mode (background monitor off) since the
+        // in-app composable detector was removed. Deduped with the service/monitor via tryShakeToggle.
+        syncInAppShake()
 
-        AppOpenAdManager.showAdIfAvailable(this)
+        // Don't show an app-open ad on the FIRST resume (the cold/intentional open) — that just
+        // blacks out the screen the user is trying to reach. Only show on later returns to the app.
+        if (hasResumedOnce) AppOpenAdManager.showAdIfAvailable(this)
+        hasResumedOnce = true
     }
+
+    private var hasResumedOnce = false
 
     override fun onPause() {
         super.onPause()
+        inAppShake?.stop()
+        inAppShake = null
         persistSettings()
+    }
+
+    // ── In-app shake (active only while the activity is resumed) ──────────────
+    private var inAppShake: ShakeHelper? = null
+
+    private fun syncInAppShake() {
+        if (NightShieldManager.allowShake.value) {
+            if (inAppShake == null) {
+                inAppShake = ShakeHelper(this) {
+                    NightShieldManager.tryShakeToggle {
+                        ShakeHelper.hapticFeedback(this)
+                        NightShieldController.toggle(this)   // service updates flag/flow/widget
+                    }
+                }.also { it.start() }
+            }
+        } else {
+            inAppShake?.stop()
+            inAppShake = null
+        }
     }
 
     private fun persistSettings() {
@@ -245,6 +336,8 @@ class MainActivity : ComponentActivity() {
         )
         OverlayHelpers.saveShakeIntensity(this, NightShieldManager.shakeIntensity.value)
         OverlayHelpers.saveGradualFade(this, NightShieldManager.gradualFadeEnabled.value && ProGate.isPro.value)
+        OverlayHelpers.saveDimLevel(this, NightShieldManager.dimLevel.value)
+        OverlayHelpers.saveAdaptiveIntensity(this, NightShieldManager.adaptiveIntensity.value && ProGate.isPro.value)
         OverlayHelpers.saveAppTheme(this, NightShieldManager.appTheme.value)
         OverlayHelpers.saveWidgetStyle(this, NightShieldManager.widgetStyle.value)
         OverlayHelpers.saveSchedules(this, NightShieldManager.schedules.value)

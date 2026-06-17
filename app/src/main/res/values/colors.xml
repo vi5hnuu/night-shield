@@ -7,4 +7,7 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- Matches the app's dark Compose background (BackgroundDeep) so cold-start shows the app
+         colour instead of a black/white flash. -->
+    <color name="launch_background">#FF080C18</color>
 </resources>

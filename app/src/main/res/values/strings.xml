@@ -75,6 +75,7 @@
 
     <!-- Widget -->
     <string name="widget_description">Toggle Night Shield blue light filter</string>
+    <string name="intensity_widget_description">Adjust Night Shield filter intensity</string>
 
     <!-- QS Tile -->
     <string name="qs_tile_label">Night Shield</string>

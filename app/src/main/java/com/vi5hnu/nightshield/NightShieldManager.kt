@@ -85,6 +85,15 @@ object NightShieldManager {
     val allowShake: StateFlow<Boolean> = _allowShake.asStateFlow()
     fun setAllowShake(value: Boolean) { _allowShake.value = value }
 
+    /**
+     * When false, the background shake monitor (and its persistent notification) never runs —
+     * shake then works only while the filter is on or the app is open. Saves battery for users
+     * who don't want a 24/7 foreground service. Default true (full reliability).
+     */
+    private val _backgroundShake = MutableStateFlow(true)
+    val backgroundShake: StateFlow<Boolean> = _backgroundShake.asStateFlow()
+    fun setBackgroundShake(value: Boolean) { _backgroundShake.value = value }
+
     private val _shakeIntensity = MutableStateFlow(ShakeIntensity.NORMAL)
     val shakeIntensity: StateFlow<ShakeIntensity> = _shakeIntensity.asStateFlow()
     fun setShakeIntensity(value: ShakeIntensity) { _shakeIntensity.value = value }
@@ -135,6 +144,24 @@ object NightShieldManager {
     val filterIntensity: StateFlow<Float> = _filterIntensity.asStateFlow()
     fun setFilterIntensity(intensity: Float) { _filterIntensity.value = intensity.coerceIn(0.1f, 1.0f) }
 
+    // ── Extra screen dimming ──────────────────────────────────────────────────
+    // A black layer drawn under the colour tint so the screen can go darker than the
+    // system-minimum brightness. 0 = off.
+    private val _dimLevel = MutableStateFlow(0f)
+    val dimLevel: StateFlow<Float> = _dimLevel.asStateFlow()
+    fun setDimLevel(level: Float) { _dimLevel.value = level.coerceIn(0f, 0.85f) }
+
+    // ── PRO: Adaptive intensity (ambient light) ────────────────────────────────
+    // When enabled, the service reads the light sensor and scales the tint via
+    // [adaptiveMultiplier] (runtime only, not persisted). The manual intensity stays the ceiling.
+    private val _adaptiveIntensity = MutableStateFlow(false)
+    val adaptiveIntensity: StateFlow<Boolean> = _adaptiveIntensity.asStateFlow()
+    fun setAdaptiveIntensity(enabled: Boolean) { _adaptiveIntensity.value = enabled }
+
+    private val _adaptiveMultiplier = MutableStateFlow(1f)
+    val adaptiveMultiplier: StateFlow<Float> = _adaptiveMultiplier.asStateFlow()
+    fun setAdaptiveMultiplier(value: Float) { _adaptiveMultiplier.value = value.coerceIn(0.2f, 1f) }
+
     // ── Temporarily disabled (per-app accessibility override) ─────────────────
     private val _filterTemporarilyDisabled = MutableStateFlow(false)
     val filterTemporarilyDisabled: StateFlow<Boolean> = _filterTemporarilyDisabled.asStateFlow()
@@ -184,6 +211,16 @@ object NightShieldManager {
         _appFilterConfigs.value = configs
     }
 
+    // ── PRO: Auto sunset/sunrise schedule ──────────────────────────────────────
+    private val _autoScheduleEnabled = MutableStateFlow(false)
+    val autoScheduleEnabled: StateFlow<Boolean> = _autoScheduleEnabled.asStateFlow()
+    fun setAutoScheduleEnabled(enabled: Boolean) { _autoScheduleEnabled.value = enabled }
+
+    /** Cached city name for display in the auto-schedule UI ("" = none yet). */
+    private val _autoCity = MutableStateFlow("")
+    val autoCity: StateFlow<String> = _autoCity.asStateFlow()
+    fun setAutoCity(city: String) { _autoCity.value = city }
+
     // ── PRO: Gradual fade-in ───────────────────────────────────────────────────
     private val _gradualFadeEnabled = MutableStateFlow(false)
     val gradualFadeEnabled: StateFlow<Boolean> = _gradualFadeEnabled.asStateFlow()
@@ -208,6 +245,7 @@ object NightShieldManager {
     // ── PRO: App theme ────────────────────────────────────────────────────────
     enum class AppTheme(val label: String) {
         SYSTEM("System"),
+        DYNAMIC("Material You"),
         DARK_OLED("Dark OLED"),
         WARM("Warm"),
         BLUE_NIGHT("Blue Night"),

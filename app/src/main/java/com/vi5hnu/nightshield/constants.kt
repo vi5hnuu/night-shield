@@ -12,6 +12,9 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.edit
 import androidx.core.net.toUri
 
+/** Cached device location used to compute local sunrise/sunset for the auto-schedule. */
+data class AutoLocation(val lat: Double, val lon: Double, val city: String)
+
 object OverlayHelpers {
     private const val PREFS = "overlay_prefs"
     private const val KEY_ACTIVE = "overlays_active"
@@ -33,6 +36,13 @@ object OverlayHelpers {
     private const val KEY_EYE_BREAK_ENABLED          = "eye_break_enabled"
     private const val KEY_DARK_MODE_SYNC             = "dark_mode_auto_sync"
     private const val KEY_BATTERY_BANNER_DISMISSED   = "battery_banner_dismissed"
+    private const val KEY_DIM_LEVEL                  = "screen_dim_level"
+    private const val KEY_BACKGROUND_SHAKE           = "background_shake"
+    private const val KEY_ADAPTIVE_INTENSITY         = "adaptive_intensity"
+    private const val KEY_AUTO_SCHEDULE              = "auto_schedule_enabled"
+    private const val KEY_GEO_LAT                    = "geo_lat"
+    private const val KEY_GEO_LON                    = "geo_lon"
+    private const val KEY_GEO_CITY                   = "geo_city"
 
     fun setOverlaysActive(context: Context, isActive: Boolean) {
         context.appPrefs().edit { putBoolean(KEY_ACTIVE, isActive) }
@@ -84,6 +94,54 @@ object OverlayHelpers {
 
     fun loadGradualFade(context: Context): Boolean =
         context.appPrefs().getBoolean(KEY_GRADUAL_FADE, false)
+
+    fun saveDimLevel(context: Context, level: Float) {
+        context.appPrefs().edit { putFloat(KEY_DIM_LEVEL, level) }
+    }
+
+    fun loadDimLevel(context: Context): Float =
+        context.appPrefs().getFloat(KEY_DIM_LEVEL, 0f)
+
+    fun saveBackgroundShake(context: Context, enabled: Boolean) {
+        context.appPrefs().edit { putBoolean(KEY_BACKGROUND_SHAKE, enabled) }
+    }
+
+    fun loadBackgroundShake(context: Context): Boolean =
+        context.appPrefs().getBoolean(KEY_BACKGROUND_SHAKE, true)
+
+    fun saveAdaptiveIntensity(context: Context, enabled: Boolean) {
+        context.appPrefs().edit { putBoolean(KEY_ADAPTIVE_INTENSITY, enabled) }
+    }
+
+    fun loadAdaptiveIntensity(context: Context): Boolean =
+        context.appPrefs().getBoolean(KEY_ADAPTIVE_INTENSITY, false)
+
+    // ── Auto sunset/sunrise schedule + cached location ────────────────────────
+    fun saveAutoScheduleEnabled(context: Context, enabled: Boolean) {
+        context.appPrefs().edit { putBoolean(KEY_AUTO_SCHEDULE, enabled) }
+    }
+
+    fun loadAutoScheduleEnabled(context: Context): Boolean =
+        context.appPrefs().getBoolean(KEY_AUTO_SCHEDULE, false)
+
+    fun saveAutoLocation(context: Context, lat: Double, lon: Double, city: String) {
+        context.appPrefs().edit {
+            putFloat(KEY_GEO_LAT, lat.toFloat())
+            putFloat(KEY_GEO_LON, lon.toFloat())
+            putString(KEY_GEO_CITY, city)
+        }
+    }
+
+    /** Cached location, or null if none has been captured yet. */
+    fun loadAutoLocation(context: Context): AutoLocation? {
+        val p = context.appPrefs()
+        if (!p.contains(KEY_GEO_LAT)) return null
+        return AutoLocation(
+            lat = p.getFloat(KEY_GEO_LAT, 0f).toDouble(),
+            lon = p.getFloat(KEY_GEO_LON, 0f).toDouble(),
+            city = p.getString(KEY_GEO_CITY, "") ?: "",
+        )
+    }
 
     fun saveAppTheme(context: Context, theme: NightShieldManager.AppTheme) {
         context.appPrefs().edit { putString(KEY_APP_THEME, theme.name) }
@@ -310,6 +368,19 @@ object OverlayHelpers {
         if (loadGradualFade(context)) {
             saveGradualFade(context, false)
             NightShieldManager.setGradualFadeEnabled(false)
+        }
+
+        // 3b. Adaptive intensity → off (Pro-only feature)
+        if (loadAdaptiveIntensity(context)) {
+            saveAdaptiveIntensity(context, false)
+            NightShieldManager.setAdaptiveIntensity(false)
+        }
+
+        // 3c. Auto sunset/sunrise → off (Pro-only feature); cancel its alarms
+        if (loadAutoScheduleEnabled(context)) {
+            saveAutoScheduleEnabled(context, false)
+            NightShieldManager.setAutoScheduleEnabled(false)
+            AutoScheduleHelper.reschedule(context)
         }
 
         // 4. Schedules → keep at most 1 (free limit)

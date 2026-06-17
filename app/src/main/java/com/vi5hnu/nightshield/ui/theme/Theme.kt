@@ -1,9 +1,12 @@
 package com.vi5hnu.nightshield.ui.theme
 
+import android.os.Build
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import com.vi5hnu.nightshield.NightShieldManager
 
 // ── Default theme (deep indigo background) ────────────────────────────────────
@@ -145,8 +148,13 @@ fun NightShieldTheme(
     theme: NightShieldManager.AppTheme = NightShieldManager.AppTheme.SYSTEM,
     content: @Composable () -> Unit,
 ) {
+    val context = LocalContext.current
     val colorScheme = when (theme) {
         NightShieldManager.AppTheme.SYSTEM       -> SystemColorScheme
+        // Material You — wallpaper-based colours on Android 12+, else the default scheme.
+        NightShieldManager.AppTheme.DYNAMIC      ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) dynamicDarkColorScheme(context)
+            else SystemColorScheme
         NightShieldManager.AppTheme.DARK_OLED    -> OledColorScheme
         NightShieldManager.AppTheme.WARM         -> WarmColorScheme
         NightShieldManager.AppTheme.BLUE_NIGHT   -> BlueNightColorScheme

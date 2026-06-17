@@ -37,5 +37,8 @@ class BootReceiver : BroadcastReceiver() {
 
         // Start shake monitor so shake-to-ON works after reboot (filter off at boot)
         NightShieldController.syncShakeMonitor(context)
+
+        // Re-arm the auto sunset/sunrise schedule (alarms are cleared on reboot)
+        AutoScheduleHelper.reschedule(context)
     }
 }

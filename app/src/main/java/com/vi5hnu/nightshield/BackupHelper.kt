@@ -25,9 +25,18 @@ object BackupHelper {
         val (color, intensity, allowShake) = OverlayHelpers.loadFilterSettings(context)
         root.put("filterColorArgb", color.toArgb())
         root.put("filterIntensity", intensity.toDouble())
+        root.put("dimLevel", NightShieldManager.dimLevel.value.toDouble())
         root.put("allowShake", allowShake)
+        root.put("backgroundShake", NightShieldManager.backgroundShake.value)
         root.put("shakeIntensity", NightShieldManager.shakeIntensity.value.name)
         root.put("gradualFadeEnabled", NightShieldManager.gradualFadeEnabled.value)
+        root.put("adaptiveIntensity", NightShieldManager.adaptiveIntensity.value)
+        root.put("autoScheduleEnabled", NightShieldManager.autoScheduleEnabled.value)
+        OverlayHelpers.loadAutoLocation(context)?.let {
+            root.put("geoLat", it.lat)
+            root.put("geoLon", it.lon)
+            root.put("geoCity", it.city)
+        }
         root.put("eyeBreakEnabled", NightShieldManager.eyeBreakEnabled.value)
         root.put("darkModeSync", NightShieldManager.darkModeAutoSync.value)
         root.put("appTheme", NightShieldManager.appTheme.value.name)
@@ -87,9 +96,21 @@ object BackupHelper {
         // Filter settings
         val colorArgb = root.optInt("filterColorArgb", NightShieldManager.TemperaturePreset.AMBER.color.toArgb())
         val intensity = root.optDouble("filterIntensity", 0.6).toFloat().coerceIn(0.1f, 1.0f)
+        val dimLevel = root.optDouble("dimLevel", 0.0).toFloat().coerceIn(0f, 0.85f)
         val allowShake = root.optBoolean("allowShake", true)
+        val backgroundShake = root.optBoolean("backgroundShake", true)
         val shakeIntensityName = root.optString("shakeIntensity", NightShieldManager.ShakeIntensity.NORMAL.name)
         val gradualFade = root.optBoolean("gradualFadeEnabled", false)
+        val adaptiveIntensity = root.optBoolean("adaptiveIntensity", false)
+        val autoSchedule = root.optBoolean("autoScheduleEnabled", false)
+        if (root.has("geoLat")) {
+            OverlayHelpers.saveAutoLocation(
+                context,
+                root.optDouble("geoLat", 0.0),
+                root.optDouble("geoLon", 0.0),
+                root.optString("geoCity", ""),
+            )
+        }
         val eyeBreakEnabled = root.optBoolean("eyeBreakEnabled", false)
         val darkModeSync = root.optBoolean("darkModeSync", false)
         val themeName = root.optString("appTheme", NightShieldManager.AppTheme.SYSTEM.name)
@@ -97,12 +118,17 @@ object BackupHelper {
 
         NightShieldManager.setCanvasColor(androidx.compose.ui.graphics.Color(colorArgb))
         NightShieldManager.setFilterIntensity(intensity)
+        NightShieldManager.setDimLevel(dimLevel)
         NightShieldManager.setAllowShake(allowShake)
+        NightShieldManager.setBackgroundShake(backgroundShake)
         NightShieldManager.setShakeIntensity(
             runCatching { NightShieldManager.ShakeIntensity.valueOf(shakeIntensityName) }
                 .getOrDefault(NightShieldManager.ShakeIntensity.NORMAL)
         )
         NightShieldManager.setGradualFadeEnabled(gradualFade && ProGate.isPro.value)
+        NightShieldManager.setAdaptiveIntensity(adaptiveIntensity && ProGate.isPro.value)
+        NightShieldManager.setAutoScheduleEnabled(autoSchedule && ProGate.isPro.value)
+        NightShieldManager.setAutoCity(OverlayHelpers.loadAutoLocation(context)?.city ?: "")
         NightShieldManager.setEyeBreakEnabled(eyeBreakEnabled)
         NightShieldManager.setDarkModeAutoSync(darkModeSync)
         NightShieldManager.setAppTheme(
@@ -184,6 +210,11 @@ object BackupHelper {
         OverlayHelpers.saveAppTheme(context, NightShieldManager.appTheme.value)
         OverlayHelpers.saveWidgetStyle(context, NightShieldManager.widgetStyle.value)
         OverlayHelpers.saveGradualFade(context, gradualFade && ProGate.isPro.value)
+        OverlayHelpers.saveAdaptiveIntensity(context, adaptiveIntensity && ProGate.isPro.value)
+        OverlayHelpers.saveAutoScheduleEnabled(context, autoSchedule && ProGate.isPro.value)
+        AutoScheduleHelper.reschedule(context)
+        OverlayHelpers.saveDimLevel(context, dimLevel)
+        OverlayHelpers.saveBackgroundShake(context, backgroundShake)
         OverlayHelpers.saveEyeBreakEnabled(context, eyeBreakEnabled)
         OverlayHelpers.saveDarkModeSync(context, darkModeSync)
 

@@ -12,6 +12,8 @@ class OverlayAlarmReceiver : BroadcastReceiver() {
         const val ACTION_STOP     = "stop"
         /** PRO — Sunrise mode: start service and gradually fade out over 30 min. */
         const val ACTION_SUNRISE  = "sunrise"
+        /** PRO — Auto-schedule: recompute the next sunset/sunrise (fires daily after midnight). */
+        const val ACTION_AUTO_RECOMPUTE = "auto_recompute"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -29,6 +31,8 @@ class OverlayAlarmReceiver : BroadcastReceiver() {
             ACTION_STOP -> if (isRunning) NightShieldController.deactivate(context)
 
             ACTION_SUNRISE -> NightShieldController.activate(context, sunrise = true)
+
+            ACTION_AUTO_RECOMPUTE -> AutoScheduleHelper.reschedule(context)
         }
     }
 }

@@ -55,8 +55,13 @@ import com.vi5hnu.nightshield.AppFilterConfig
 import com.vi5hnu.nightshield.BackupHelper
 import com.vi5hnu.nightshield.BillingManager
 import com.vi5hnu.nightshield.FilterProfile
+import com.vi5hnu.nightshield.BatteryHelpers
+import com.vi5hnu.nightshield.BedtimeHelper
+import com.vi5hnu.nightshield.IntensityWidgetProvider
+import com.vi5hnu.nightshield.NightShieldController
 import com.vi5hnu.nightshield.NightShieldManager
 import com.vi5hnu.nightshield.OverlayHelpers
+import com.vi5hnu.nightshield.SunTimes
 import com.vi5hnu.nightshield.ProGate
 import com.vi5hnu.nightshield.R
 import com.vi5hnu.nightshield.ScheduleAction
@@ -85,6 +90,9 @@ fun HomeScreen(
     onRestorePurchase: () -> Unit = {},
     onExportSettings: () -> Unit = {},
     onImportSettings: () -> Unit = {},
+    onEnableAutoSchedule: () -> Unit = {},
+    onDisableAutoSchedule: () -> Unit = {},
+    onRefreshLocation: () -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -402,6 +410,24 @@ fun HomeScreen(
                             )
                         }
 
+                        // One-tap Bedtime routine — warm + dim + 30-min sleep timer, then activate.
+                        if (hasOverlayPermission && !areServicesActive) {
+                            Spacer(Modifier.height(10.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    BedtimeHelper.apply(context)
+                                },
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                shape = RoundedCornerShape(16.dp),
+                            ) {
+                                Text(
+                                    text = "🌙  Bedtime  ·  warm, dim, 30-min timer",
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            }
+                        }
+
                         if (!hasOverlayPermission) {
                             Spacer(Modifier.height(12.dp))
                             Text(
@@ -435,6 +461,22 @@ fun HomeScreen(
                     ) {
                         Column {
                             SettingsDivider()
+
+                            // Background shake — keep detecting when the app is closed (battery tradeoff)
+                            val backgroundShake by NightShieldManager.backgroundShake.collectAsState()
+                            Tile(
+                                R.drawable.vibration_24px,
+                                "Background shake",
+                                "Detect shakes when the app is closed. Off = saves battery, no ongoing notification",
+                            ) {
+                                Switch(checked = backgroundShake, onCheckedChange = {
+                                    NightShieldManager.setBackgroundShake(it)
+                                    OverlayHelpers.saveBackgroundShake(context, it)
+                                    NightShieldController.syncShakeMonitor(context)
+                                })
+                            }
+                            SettingsDivider()
+
                             val shakeIntensity by NightShieldManager.shakeIntensity.collectAsState()
                             // Label + hint row
                             Row(
@@ -568,8 +610,28 @@ fun HomeScreen(
                                     NightShieldManager.filterIntensity.value,
                                     NightShieldManager.allowShake.value,
                                 )
+                                IntensityWidgetProvider.updateAll(context)
                             },
                             valueRange = 0.1f..1.0f,
+                            modifier = Modifier.width(120.dp),
+                            colors = SliderDefaults.colors(
+                                thumbColor = MaterialTheme.colorScheme.primary,
+                                activeTrackColor = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                    }
+                    SettingsDivider()
+
+                    // Extra screen dimming — darkens below system-minimum brightness
+                    val dimLevel by NightShieldManager.dimLevel.collectAsState()
+                    Tile(R.drawable.ic_brightness_24, "Screen dimming", "Darken the screen beyond the system minimum") {
+                        Slider(
+                            value = dimLevel,
+                            onValueChange = { NightShieldManager.setDimLevel(it) },
+                            onValueChangeFinished = {
+                                OverlayHelpers.saveDimLevel(context, NightShieldManager.dimLevel.value)
+                            },
+                            valueRange = 0f..0.85f,
                             modifier = Modifier.width(120.dp),
                             colors = SliderDefaults.colors(
                                 thumbColor = MaterialTheme.colorScheme.primary,
@@ -592,6 +654,27 @@ fun HomeScreen(
                                 onCheckedChange = {
                                     NightShieldManager.setGradualFadeEnabled(it)
                                     OverlayHelpers.saveGradualFade(context, it)
+                                },
+                            )
+                        } else {
+                            ProBadge { showUpgradeScreen = true }
+                        }
+                    }
+                    SettingsDivider()
+
+                    // PRO — Adaptive intensity (ambient light)
+                    val adaptive by NightShieldManager.adaptiveIntensity.collectAsState()
+                    Tile(
+                        id = R.drawable.ic_brightness_24,
+                        title = "Adaptive Intensity",
+                        subtitle = "Auto-eases the filter using the light sensor (your intensity is the max)",
+                    ) {
+                        if (isPro) {
+                            Switch(
+                                checked = adaptive,
+                                onCheckedChange = {
+                                    NightShieldManager.setAdaptiveIntensity(it)
+                                    OverlayHelpers.saveAdaptiveIntensity(context, it)
                                 },
                             )
                         } else {
@@ -659,6 +742,16 @@ fun HomeScreen(
                 Spacer(Modifier.height(8.dp))
 
                 ScheduleSection(isPro = isPro, onShowUpgrade = { showUpgradeScreen = true })
+
+                Spacer(Modifier.height(12.dp))
+
+                AutoScheduleSection(
+                    isPro = isPro,
+                    onShowUpgrade = { showUpgradeScreen = true },
+                    onEnable = onEnableAutoSchedule,
+                    onDisable = onDisableAutoSchedule,
+                    onRefresh = onRefreshLocation,
+                )
 
                 Spacer(Modifier.height(24.dp))
 
@@ -917,10 +1010,10 @@ private fun SleepTimerRow() {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
         // Split into rows of 4 so chips never get squished on narrow screens
         val rows = options.indices.chunked(4)
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             rows.forEach { indices ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1099,6 +1192,65 @@ private fun ScheduleEntryRow(
     }
 }
 
+// ── PRO: Auto sunset/sunrise section ───────────────────────────────────────────
+
+@Composable
+private fun AutoScheduleSection(
+    isPro: Boolean,
+    onShowUpgrade: () -> Unit,
+    onEnable: () -> Unit,
+    onDisable: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    val context = LocalContext.current
+    val enabled by NightShieldManager.autoScheduleEnabled.collectAsState()
+    val city by NightShieldManager.autoCity.collectAsState()
+
+    SettingsCard {
+        Tile(
+            id = R.drawable.ic_moon_24,
+            title = "Auto Sunset / Sunrise",
+            subtitle = "Filter follows your local sunset & sunrise times",
+        ) {
+            if (isPro) {
+                Switch(checked = enabled, onCheckedChange = { if (it) onEnable() else onDisable() })
+            } else {
+                ProBadge(onClick = onShowUpgrade)
+            }
+        }
+        if (isPro && enabled) {
+            SettingsDivider()
+            val loc = remember(city) { OverlayHelpers.loadAutoLocation(context) }
+            val times = remember(loc) { loc?.let { SunTimes.compute(it.lat, it.lon, java.time.LocalDate.now()) } }
+            val zone = java.time.ZoneId.systemDefault()
+            val fmt = remember { java.time.format.DateTimeFormatter.ofPattern("HH:mm") }
+            fun fmtMs(ms: Long) = java.time.Instant.ofEpochMilli(ms).atZone(zone).toLocalTime().format(fmt)
+            val sunrise = times?.let { fmtMs(it.first) } ?: "--:--"
+            val sunset = times?.let { fmtMs(it.second) } ?: "--:--"
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text(
+                        city.ifBlank { "Location set" },
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        "🌙 on at $sunset   ·   ☀️ off at $sunrise",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = onRefresh) { Text("Refresh") }
+            }
+        }
+    }
+}
+
 @Composable
 private fun AddScheduleDialog(
     context: Context,
@@ -1237,43 +1389,37 @@ private fun BatteryOptBanner(context: Context) {
                 containerColor = MaterialTheme.colorScheme.secondaryContainer
             )
         ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Icon(
-                    painterResource(R.drawable.ic_notification_24),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.size(20.dp)
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.battery_opt_title),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        fontWeight = FontWeight.SemiBold
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_notification_24),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.size(20.dp)
                     )
-                    Text(
-                        stringResource(R.string.battery_opt_body),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
-                    )
-                }
-                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(
-                        onClick = {
-                            context.startActivity(
-                                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                    data = android.net.Uri.parse("package:${context.packageName}")
-                                }
-                            )
-                        },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(stringResource(R.string.battery_opt_fix), style = MaterialTheme.typography.labelMedium)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.battery_opt_title),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            stringResource(R.string.battery_opt_body),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                        )
                     }
+                }
+                // Actions on a single row below the text so they don't stretch the card vertically.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     TextButton(
                         onClick = { dismissed = true; OverlayHelpers.saveBatteryBannerDismissed(context) },
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
@@ -1283,6 +1429,19 @@ private fun BatteryOptBanner(context: Context) {
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f)
                         )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    TextButton(
+                        onClick = { BatteryHelpers.openAutoStartSettings(context) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text("Auto-start", style = MaterialTheme.typography.labelMedium)
+                    }
+                    TextButton(
+                        onClick = { BatteryHelpers.requestIgnoreBatteryOptimizations(context) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(stringResource(R.string.battery_opt_fix), style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
@@ -1992,6 +2151,7 @@ private fun AppThemeSection(isPro: Boolean, onShowUpgrade: () -> Unit) {
                 title = theme.label,
                 subtitle = when (theme) {
                     NightShieldManager.AppTheme.SYSTEM       -> "Default deep indigo dark look"
+                    NightShieldManager.AppTheme.DYNAMIC      -> "Material You — colours from your wallpaper (Android 12+)"
                     NightShieldManager.AppTheme.DARK_OLED    -> "Pure black — saves battery on OLED"
                     NightShieldManager.AppTheme.WARM         -> "Amber-tinted dark to match the filter"
                     NightShieldManager.AppTheme.BLUE_NIGHT   -> "Deep navy — calm coding & reading"
