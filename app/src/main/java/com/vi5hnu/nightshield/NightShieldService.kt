@@ -58,6 +58,7 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var sleepTimerJob: Job? = null
     private var sunriseJob: Job? = null
+    private var fadeJob: Job? = null
     private var eyeBreakJob: Job? = null
     private var shakeHelper: ShakeHelper? = null
     /** Absolute deadline (epoch ms) of the active sleep timer; 0 = none. */
@@ -214,7 +215,7 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         NightShieldWidgetProvider.updateWidget(applicationContext)
         IntensityWidgetProvider.updateAll(applicationContext)
 
-        showOverlay()
+        showOverlay(isSunrise)
         createNotificationChannel()
         val notification = createNotification()
         try {
@@ -268,8 +269,40 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         }
     }
 
-    private fun showOverlay() {
+    /**
+     * Drives the PRO gradual fade-in as a service coroutine instead of an in-Compose animation.
+     * Must be invoked BEFORE the overlay's first frame so the initial value is already in place
+     * (otherwise the tint flashes at full strength before settling). When the filter is activated
+     * from a background shake the overlay is created off-screen, where the Compose frame clock may
+     * not tick — a self-driven animateFloatAsState would stall at 0 and the filter would never
+     * appear. A delay-based StateFlow ramp re-posts a main-looper frame each tick (same proven
+     * pattern as [startSunriseMode]).
+     */
+    private fun startFadeIn(sunrise: Boolean) {
+        fadeJob?.cancel()
+        // No fade (toggle off) or Sunrise mode (which runs its own brighten-over-30min ramp):
+        // render at full strength immediately.
+        if (!NightShieldManager.gradualFadeEnabled.value || sunrise) {
+            NightShieldManager.setFadeMultiplier(1f)
+            return
+        }
+        NightShieldManager.setFadeMultiplier(0f)
+        val startTime = System.currentTimeMillis()
+        fadeJob = serviceScope.launch {
+            while (true) {
+                val progress = ((System.currentTimeMillis() - startTime).toFloat()
+                    / FADE_IN_DURATION_MS).coerceIn(0f, 1f)
+                NightShieldManager.setFadeMultiplier(progress)
+                if (progress >= 1f) break
+                delay(FADE_IN_STEP_MS)
+            }
+        }
+    }
+
+    private fun showOverlay(sunrise: Boolean) {
         if (overlayView != null) return
+        // Set the fade-in's starting value before the view draws its first frame.
+        startFadeIn(sunrise)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
 
@@ -416,8 +449,11 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         shakeHelper = null
         sleepTimerJob?.cancel()
         sunriseJob?.cancel()
+        fadeJob?.cancel()
         eyeBreakJob?.cancel()
         serviceScope.cancel()
+        // Reset so a stale mid-ramp value can't leave the next activation's first frame dimmed.
+        NightShieldManager.setFadeMultiplier(1f)
         // Sole writer of active state: clear the persisted flag + reactive flow, then
         // refresh the widget so it shows OFF the moment the service stops.
         OverlayHelpers.dispose(applicationContext)
@@ -478,6 +514,8 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
         const val EXTRA_SUNRISE = "sunrise_mode"
         private const val SUNRISE_DURATION_MS = 30 * 60 * 1000L  // 30 minutes
+        private const val FADE_IN_DURATION_MS = 12_000L          // gradual fade-in over 12 s
+        private const val FADE_IN_STEP_MS = 200L                 // ramp update interval
         private const val CHANNEL_ID = "night_shield_service_channel"
         private const val CHANNEL_NAME = "Night Shield Service"
         private const val NOTIFICATION_ID = 1234

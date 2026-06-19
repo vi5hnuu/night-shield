@@ -226,6 +226,16 @@ object NightShieldManager {
     val gradualFadeEnabled: StateFlow<Boolean> = _gradualFadeEnabled.asStateFlow()
     fun setGradualFadeEnabled(enabled: Boolean) { _gradualFadeEnabled.value = enabled }
 
+    // Service-driven 0→1 ramp for the gradual fade-in. Written by NightShieldService (NOT an
+    // in-Compose animation): when the filter is activated by a background shake the overlay is
+    // created off-screen where the Compose frame clock may not tick, so a self-driven
+    // animateFloatAsState stalls at 0 and the tint never appears ("widget on, filter not there").
+    // A delay-based StateFlow ramp resumes on the main Looper and re-posts a frame each tick, so
+    // the overlay redraws reliably even in the background (same pattern as Sunrise mode).
+    private val _fadeMultiplier = MutableStateFlow(1f)
+    val fadeMultiplier: StateFlow<Float> = _fadeMultiplier.asStateFlow()
+    fun setFadeMultiplier(value: Float) { _fadeMultiplier.value = value.coerceIn(0f, 1f) }
+
     // ── PRO: Saved profiles ───────────────────────────────────────────────────
     private val _profiles = MutableStateFlow<List<FilterProfile>>(emptyList())
     val profiles: StateFlow<List<FilterProfile>> = _profiles.asStateFlow()
