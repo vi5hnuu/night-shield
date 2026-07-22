@@ -21,3 +21,6 @@ local.properties
 # Signing secrets — never commit
 key.properties
 keystore.properties
+
+# Kotlin compiler build cache
+.kotlin/

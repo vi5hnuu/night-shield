@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
@@ -61,9 +62,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         compose = true
     }
@@ -72,6 +70,13 @@ android {
         // False positive: fires when registerForActivityResult is used, but this app
         // extends ComponentActivity (not FragmentActivity), so Fragment version is irrelevant.
         disable += "InvalidFragmentVersionForActivityResult"
+    }
+}
+
+// Kotlin 2.x compilerOptions DSL (replaces the removed kotlinOptions block).
+kotlin {
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_17
     }
 }
 
