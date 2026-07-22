@@ -6,7 +6,6 @@ import com.android.billingclient.api.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -31,8 +30,6 @@ object BillingManager {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var billingClient: BillingClient? = null
-    private var reconnectAttempts = 0
-    private const val MAX_RECONNECT_ATTEMPTS = 3
 
     // ── Public API ────────────────────────────────────────────────────────────
 
@@ -56,6 +53,10 @@ object BillingManager {
             .enablePendingPurchases(
                 PendingPurchasesParams.newBuilder().enableOneTimeProducts().build()
             )
+            // PBL 8+: let the library transparently re-establish the connection whenever
+            // the Play service drops and an API call is made. This replaces manual retry
+            // logic in onBillingServiceDisconnected (see startConnection).
+            .enableAutoServiceReconnection()
             .build()
 
         startConnection(context.applicationContext)
@@ -78,9 +79,12 @@ object BillingManager {
             )
             .build()
 
-        client.queryProductDetailsAsync(params) { result, detailsList ->
+        client.queryProductDetailsAsync(params) { result, productDetailsResult ->
             if (result.responseCode != BillingClient.BillingResponseCode.OK) return@queryProductDetailsAsync
-            val details = detailsList.firstOrNull() ?: return@queryProductDetailsAsync
+            // PBL 8+: the callback now delivers a QueryProductDetailsResult (fetched list +
+            // unfetched products) instead of a bare List<ProductDetails>.
+            val details = productDetailsResult.productDetailsList.firstOrNull()
+                ?: return@queryProductDetailsAsync
 
             client.launchBillingFlow(
                 activity,
@@ -111,19 +115,13 @@ object BillingManager {
         billingClient?.startConnection(object : BillingClientStateListener {
             override fun onBillingSetupFinished(result: BillingResult) {
                 if (result.responseCode == BillingClient.BillingResponseCode.OK) {
-                    reconnectAttempts = 0
                     scope.launch { queryPurchases(context) }
                 }
             }
             override fun onBillingServiceDisconnected() {
-                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-                    reconnectAttempts++
-                    val delayMs = (reconnectAttempts * 2_000L).coerceAtMost(10_000L)
-                    scope.launch {
-                        delay(delayMs)
-                        startConnection(context)
-                    }
-                }
+                // No-op: enableAutoServiceReconnection() makes the library re-establish the
+                // connection automatically on the next API call. Calling startConnection()
+                // here would compete with that and is discouraged by the PBL docs.
             }
         })
     }
