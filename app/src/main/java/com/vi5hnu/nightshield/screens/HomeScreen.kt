@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -128,6 +129,12 @@ fun HomeScreen(
     }
 
     if (showUpgradeScreen) {
+        // The upgrade screen is a state-driven overlay (no Jetpack Nav back stack), so system back
+        // must be intercepted explicitly — otherwise it leaves the activity. Mandatory from
+        // targetSdk 36: predictive back is on by default there, meaning onBackPressed() is never
+        // called and KEYCODE_BACK is not dispatched; BackHandler is the supported API and also
+        // drives the correct "return to home screen" predictive preview instead of app exit.
+        BackHandler { showUpgradeScreen = false }
         UpgradeScreen(
             isPro = isPro,
             onPurchase = onPurchase,
