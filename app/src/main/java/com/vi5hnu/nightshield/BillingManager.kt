@@ -6,6 +6,9 @@ import com.android.billingclient.api.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -30,6 +33,16 @@ object BillingManager {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var billingClient: BillingClient? = null
+
+    /**
+     * Play's localised price for [PRODUCT_ID] (e.g. "₹49", "$0.99"), or null until Play answers.
+     *
+     * The paywall used to print a hardcoded "₹49", which is wrong in every other currency and
+     * silently stale after a price change. Callers should fall back to their own copy while this
+     * is null.
+     */
+    private val _formattedPrice = MutableStateFlow<String?>(null)
+    val formattedPrice: StateFlow<String?> = _formattedPrice.asStateFlow()
 
     // ── Public API ────────────────────────────────────────────────────────────
 
@@ -68,18 +81,7 @@ object BillingManager {
      */
     fun purchase(activity: Activity) {
         val client = billingClient?.takeIf { it.isReady } ?: return
-        val params = QueryProductDetailsParams.newBuilder()
-            .setProductList(
-                listOf(
-                    QueryProductDetailsParams.Product.newBuilder()
-                        .setProductId(PRODUCT_ID)
-                        .setProductType(BillingClient.ProductType.INAPP)
-                        .build()
-                )
-            )
-            .build()
-
-        client.queryProductDetailsAsync(params) { result, productDetailsResult ->
+        client.queryProductDetailsAsync(productDetailsParams()) { result, productDetailsResult ->
             if (result.responseCode != BillingClient.BillingResponseCode.OK) return@queryProductDetailsAsync
             // PBL 8+: the callback now delivers a QueryProductDetailsResult (fetched list +
             // unfetched products) instead of a bare List<ProductDetails>.
@@ -115,7 +117,10 @@ object BillingManager {
         billingClient?.startConnection(object : BillingClientStateListener {
             override fun onBillingSetupFinished(result: BillingResult) {
                 if (result.responseCode == BillingClient.BillingResponseCode.OK) {
-                    scope.launch { queryPurchases(context) }
+                    scope.launch {
+                        queryPurchases(context)
+                        queryPrice()
+                    }
                 }
             }
             override fun onBillingServiceDisconnected() {
@@ -125,6 +130,29 @@ object BillingManager {
             }
         })
     }
+
+    /** Fetches the localised price so the paywall can show Play's own number. */
+    private fun queryPrice() {
+        val client = billingClient?.takeIf { it.isReady } ?: return
+        client.queryProductDetailsAsync(productDetailsParams()) { result, productDetailsResult ->
+            if (result.responseCode != BillingClient.BillingResponseCode.OK) return@queryProductDetailsAsync
+            _formattedPrice.value = productDetailsResult.productDetailsList
+                .firstOrNull()
+                ?.oneTimePurchaseOfferDetails
+                ?.formattedPrice
+        }
+    }
+
+    private fun productDetailsParams() = QueryProductDetailsParams.newBuilder()
+        .setProductList(
+            listOf(
+                QueryProductDetailsParams.Product.newBuilder()
+                    .setProductId(PRODUCT_ID)
+                    .setProductType(BillingClient.ProductType.INAPP)
+                    .build()
+            )
+        )
+        .build()
 
     private fun queryPurchases(context: Context) {
         val client = billingClient ?: return
