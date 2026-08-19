@@ -167,7 +167,7 @@ fun AppsScreen(
                 EmptyState(
                     icon = R.drawable.ic_apps_24,
                     title = "No apps configured",
-                    description = "Add an app to pause or customise the filter while it is open.",
+                    description = stringResource(R.string.per_app_no_items),
                 )
             } else {
                 Spacer(Modifier.height(Spacing.sm))

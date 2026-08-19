@@ -250,7 +250,7 @@ fun FilterScreen(
         Spacer(Modifier.height(Spacing.xxl))
 
         // ── Sleep timer ───────────────────────────────────────────────────────
-        SectionHeader(stringResource(R.string.sleep_timer_title))
+        SectionHeader("Timer")
         SleepTimerGroup()
 
         Spacer(Modifier.height(Spacing.xxl))
@@ -763,16 +763,26 @@ private fun ShakeGroup(
 private fun SleepTimerGroup() {
     val currentMinutes by NightShieldManager.sleepTimerMinutes.collectAsState()
     val options = listOf(0, 15, 30, 60, 90, 120, 180, 240)
-    val labels = listOf("Off", "15m", "30m", "1h", "1.5h", "2h", "3h", "4h")
+    val labels = listOf(
+        stringResource(R.string.sleep_timer_off),
+        "15m", "30m", "1h", "1.5h", "2h", "3h", "4h",
+    )
 
     SettingsGroup {
-        Column(modifier = Modifier.padding(Spacing.lg)) {
-            Text(
-                text = stringResource(R.string.sleep_timer_subtitle),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(Spacing.md))
+        SettingRow(
+            icon = R.drawable.ic_timer_24,
+            title = stringResource(R.string.sleep_timer_title),
+            subtitle = stringResource(R.string.sleep_timer_subtitle),
+            trailing = {
+                Text(
+                    text = if (currentMinutes == 0) stringResource(R.string.sleep_timer_off)
+                    else labels[options.indexOf(currentMinutes).coerceAtLeast(0)],
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            },
+        )
+        Column(modifier = Modifier.padding(start = Spacing.lg, end = Spacing.lg, bottom = Spacing.lg)) {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 options.indices.chunked(4).forEach { indices ->
                     Row(
