@@ -159,6 +159,16 @@ object BillingManager {
     }
 
     /**
+     * Entitlement as last verified by Play, readable without starting the billing client.
+     *
+     * For components that run in a cold process where [ProGate] has not been populated yet — a
+     * widget update, for instance — reading the in-memory gate would report "not Pro" for a paying
+     * user. This reads the cache Play itself last wrote.
+     */
+    fun isProCached(context: Context): Boolean =
+        context.billingPrefs().getBoolean(KEY_IS_PRO, false)
+
+    /**
      * Re-query Play purchases — used by the "Restore purchase" button.
      * On reinstall with the same Google account this restores pro access.
      */

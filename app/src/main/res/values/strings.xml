@@ -60,7 +60,7 @@
     <string name="battery_opt_dismiss">Dismiss</string>
 
     <!-- Per-app filter -->
-    <string name="per_app_no_items">No apps configured. Tap + to add one.</string>
+    <string name="per_app_no_items">Add an app to pause or customise the filter while it is open.</string>
     <string name="per_app_disable_label">Pause filter</string>
     <string name="per_app_custom_intensity">Custom intensity</string>
 

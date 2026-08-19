@@ -774,9 +774,16 @@ private fun SleepTimerGroup() {
             title = stringResource(R.string.sleep_timer_title),
             subtitle = stringResource(R.string.sleep_timer_subtitle),
             trailing = {
+                // The running timer is not always one of the chip values: after a service restart
+                // the remaining minutes are restored verbatim, so an index lookup alone would
+                // report "Off" while a timer is actually counting down.
+                val selectedIndex = options.indexOf(currentMinutes)
                 Text(
-                    text = if (currentMinutes == 0) stringResource(R.string.sleep_timer_off)
-                    else labels[options.indexOf(currentMinutes).coerceAtLeast(0)],
+                    text = when {
+                        currentMinutes <= 0 -> stringResource(R.string.sleep_timer_off)
+                        selectedIndex >= 0 -> labels[selectedIndex]
+                        else -> "$currentMinutes min left"
+                    },
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.primary,
                 )

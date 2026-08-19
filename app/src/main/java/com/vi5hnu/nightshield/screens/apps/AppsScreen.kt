@@ -60,6 +60,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -245,6 +247,7 @@ private fun AppConfigRow(
     onDelete: () -> Unit,
 ) {
     var showColorSheet by remember { mutableStateOf(false) }
+    val pauseLabel = stringResource(R.string.per_app_disable_label)
     val globalIntensity by NightShieldManager.filterIntensity.collectAsState()
     val globalColor by NightShieldManager.canvasColor.collectAsState()
 
@@ -272,6 +275,11 @@ private fun AppConfigRow(
             Switch(
                 checked = config.filterDisabled,
                 onCheckedChange = { onUpdate(config.copy(filterDisabled = it)) },
+                // The row's text describes the state, not the control, so name the switch itself
+                // for screen readers.
+                modifier = Modifier.semantics {
+                    contentDescription = pauseLabel
+                },
             )
             IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
                 Icon(
