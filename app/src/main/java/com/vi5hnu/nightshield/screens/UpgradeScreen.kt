@@ -45,8 +45,13 @@ import com.vi5hnu.nightshield.ui.theme.IconSize
 import com.vi5hnu.nightshield.ui.theme.Radius
 import com.vi5hnu.nightshield.ui.theme.Spacing
 
-/** Copy shown while Play has not returned a localised price yet. */
-private const val FALLBACK_PRICE = "₹49"
+/**
+ * Shown while Play has not returned a localised price yet.
+ *
+ * Deliberately not a number: a hardcoded amount is wrong in every other currency and goes stale
+ * the moment the price changes in Play Console (the previous "₹49" was already out of date).
+ */
+private const val PRICE_PENDING = "One-time purchase"
 
 private data class ProFeature(
     @param:DrawableRes val icon: Int,
@@ -98,7 +103,6 @@ fun UpgradeScreen(
     onDismiss: () -> Unit,
 ) {
     val storePrice by BillingManager.formattedPrice.collectAsState()
-    val price = storePrice ?: FALLBACK_PRICE
 
     Column(
         modifier = Modifier
@@ -136,7 +140,7 @@ fun UpgradeScreen(
                     Spacer(Modifier.height(Spacing.xxl))
                     ComparisonTable()
                     Spacer(Modifier.height(Spacing.xxl))
-                    PriceCard(price = price)
+                    PriceCard(price = storePrice)
                     Spacer(Modifier.height(Spacing.lg))
                 }
             } else {
@@ -176,7 +180,10 @@ fun UpgradeScreen(
                             contentColor = MaterialTheme.colorScheme.onPrimary,
                         ),
                     ) {
-                        Text("Unlock Pro · $price", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            text = storePrice?.let { "Unlock Pro · $it" } ?: "Unlock Pro",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
                     }
                     TextButton(onClick = onRestorePurchase) {
                         Text(
@@ -362,7 +369,7 @@ private fun CompareCell(value: String, modifier: Modifier, emphasised: Boolean) 
 }
 
 @Composable
-private fun PriceCard(price: String) {
+private fun PriceCard(price: String?) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(Radius.lg),
@@ -375,7 +382,11 @@ private fun PriceCard(price: String) {
                 .padding(Spacing.xl),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(price, style = MaterialTheme.typography.displaySmall)
+            Text(
+                text = price ?: PRICE_PENDING,
+                style = if (price != null) MaterialTheme.typography.displaySmall
+                else MaterialTheme.typography.titleMedium,
+            )
             Spacer(Modifier.height(Spacing.xs))
             Text(
                 "Pay once · Unlock forever · No expiry",

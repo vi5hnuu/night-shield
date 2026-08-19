@@ -301,3 +301,20 @@ object NightShieldManager {
         ROSE(Color(0xAAE91E63),      "Rose",      Color(0xFFF48FB1)),
     }
 }
+
+// ── Entitlement rules for stored values ───────────────────────────────────────
+//
+// Persisted settings outlive entitlement: they survive a restored backup, an imported backup file,
+// and a refund that was processed while this device was offline or reinstalled. Anything read back
+// from storage therefore has to be filtered through the same rule the pickers enforce, otherwise a
+// free user keeps whatever Pro value happens to be in their prefs.
+
+/** Only [NightShieldManager.AppTheme.SYSTEM] is free; every other palette needs Pro. */
+fun NightShieldManager.AppTheme.gatedBy(isPro: Boolean): NightShieldManager.AppTheme =
+    if (isPro || this == NightShieldManager.AppTheme.SYSTEM) this
+    else NightShieldManager.AppTheme.SYSTEM
+
+/** Only [NightShieldManager.WidgetStyle.STANDARD] is free; the other layouts need Pro. */
+fun NightShieldManager.WidgetStyle.gatedBy(isPro: Boolean): NightShieldManager.WidgetStyle =
+    if (isPro || this == NightShieldManager.WidgetStyle.STANDARD) this
+    else NightShieldManager.WidgetStyle.STANDARD

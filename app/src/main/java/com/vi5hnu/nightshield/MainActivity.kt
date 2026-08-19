@@ -142,8 +142,14 @@ class MainActivity : ComponentActivity() {
         NightShieldManager.setAutoScheduleEnabled(OverlayHelpers.loadAutoScheduleEnabled(applicationContext) && ProGate.isPro.value)
         NightShieldManager.setAutoCity(OverlayHelpers.loadAutoLocation(applicationContext)?.city ?: "")
         AutoScheduleHelper.reschedule(applicationContext)
-        NightShieldManager.setAppTheme(OverlayHelpers.loadAppTheme(applicationContext))
-        NightShieldManager.setWidgetStyle(OverlayHelpers.loadWidgetStyle(applicationContext))
+        // Gated on load like the Pro toggles above: a stored Pro theme or widget style must not
+        // apply without entitlement (restored backup, or a refund processed on another device).
+        NightShieldManager.setAppTheme(
+            OverlayHelpers.loadAppTheme(applicationContext).gatedBy(ProGate.isPro.value)
+        )
+        NightShieldManager.setWidgetStyle(
+            OverlayHelpers.loadWidgetStyle(applicationContext).gatedBy(ProGate.isPro.value)
+        )
 
         NightShieldManager.setSchedules(OverlayHelpers.loadSchedules(applicationContext))
         NightShieldManager.setAppFilterConfigs(OverlayHelpers.loadAppConfigs(applicationContext))
@@ -295,6 +301,12 @@ class MainActivity : ComponentActivity() {
                 launchOverlays()
             }
         }
+
+        // Re-verify entitlement with Play on every foreground. Without this, both Pro status and
+        // the store price are frozen at whatever the process's first connection attempt returned:
+        // a user who launched while offline would stay locked out of what they bought, and a
+        // refund would go unnoticed for as long as the process lives.
+        BillingManager.refresh()
 
         // Keep the background shake monitor in sync with the current state.
         NightShieldController.syncShakeMonitor(applicationContext)
