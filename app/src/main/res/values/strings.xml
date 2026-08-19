@@ -4,8 +4,10 @@
     <!-- Notification -->
     <string name="notification_title">Night Shield Active</string>
     <string name="notification_text">Blue light filter is running</string>
+    <!-- %1$d is the current filter strength as a percentage -->
+    <string name="notification_text_format">Filtering at %1$d%% strength</string>
     <string name="notification_channel_name">Night Shield Service</string>
-    <string name="notification_action_stop">Stop Filter</string>
+    <string name="notification_action_stop">Turn off</string>
 
     <!-- HomeScreen buttons -->
     <string name="btn_activate">Activate Filter</string>

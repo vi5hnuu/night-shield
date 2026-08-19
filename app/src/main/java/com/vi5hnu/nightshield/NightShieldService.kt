@@ -380,8 +380,8 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 delay(20 * 60_000L)
                 if (NightShieldManager.eyeBreakEnabled.value) {
                     val note = NotificationCompat.Builder(this@NightShieldService, EYE_BREAK_CHANNEL_ID)
-                        .setSmallIcon(R.drawable.ic_moon_24)
-                        .setContentTitle("👁️ Time to rest your eyes!")
+                        .setSmallIcon(R.drawable.ic_visibility_24)
+                        .setContentTitle("Time to rest your eyes")
                         .setContentText("Look at something 20 feet away for 20 seconds.")
                         .setAutoCancel(true)
                         .setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -413,10 +413,10 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_24)
             .setContentTitle(getString(R.string.notification_title))
-            .setContentText("Intensity $intensityPct%$timerSuffix · ${getString(R.string.notification_text)}")
+            .setContentText(getString(R.string.notification_text_format, intensityPct) + timerSuffix)
             .setContentIntent(openIntent)
             .setOngoing(true)
-            .addAction(R.drawable.ic_notification_24, getString(R.string.notification_action_stop), stopIntent)
+            .addAction(R.drawable.ic_power_24, getString(R.string.notification_action_stop), stopIntent)
 
         // PRO: quick intensity ±10% buttons directly in the notification
         if (ProGate.isPro.value) {
@@ -434,7 +434,7 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 },
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            builder.addAction(R.drawable.ic_brightness_24, "−10%", downIntent)
+            builder.addAction(R.drawable.ic_brightness_24, "-10%", downIntent)
             builder.addAction(R.drawable.ic_brightness_24, "+10%", upIntent)
         }
         return builder.build()
