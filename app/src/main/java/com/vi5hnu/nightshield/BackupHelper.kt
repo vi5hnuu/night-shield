@@ -134,10 +134,12 @@ object BackupHelper {
         NightShieldManager.setAppTheme(
             runCatching { NightShieldManager.AppTheme.valueOf(themeName) }
                 .getOrDefault(NightShieldManager.AppTheme.SYSTEM)
+                .gatedBy(ProGate.isPro.value)
         )
         NightShieldManager.setWidgetStyle(
             runCatching { NightShieldManager.WidgetStyle.valueOf(widgetStyleName) }
                 .getOrDefault(NightShieldManager.WidgetStyle.STANDARD)
+                .gatedBy(ProGate.isPro.value)
         )
 
         // Schedules — free tier capped at 1; Pro backup imported by free user must be trimmed

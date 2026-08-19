@@ -42,7 +42,7 @@
             android:textColor="#FFFFFF"
             android:textSize="11sp"
             android:textStyle="bold"
-            android:letterSpacing="0.05"
+            android:letterSpacing="0.04"
             android:visibility="gone" />
 
         <!-- Gap between pills (only shown in DETAILED) — Space is not RemoteViews-safe, use TextView -->
@@ -63,7 +63,7 @@
             android:paddingRight="7dp"
             android:paddingTop="2dp"
             android:paddingBottom="2dp"
-            android:textColor="#CCFFFFFF"
+            android:textColor="#B3FFFFFF"
             android:textSize="11sp"
             android:visibility="gone" />
 

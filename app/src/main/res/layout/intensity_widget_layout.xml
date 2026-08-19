@@ -15,9 +15,9 @@
         android:orientation="horizontal"
         android:gravity="center"
         android:background="@drawable/widget_pill_bg"
-        android:paddingStart="12dp"
-        android:paddingEnd="8dp"
-        android:paddingVertical="4dp">
+        android:paddingStart="14dp"
+        android:paddingEnd="10dp"
+        android:paddingVertical="6dp">
 
         <!-- Toggle the filter on/off -->
         <ImageView
@@ -36,7 +36,7 @@
             android:layout_marginStart="2dp"
             android:gravity="center"
             android:text="−"
-            android:textColor="#FFFFFF"
+            android:textColor="#F2FFFFFF"
             android:textSize="20sp"
             android:textStyle="bold"
             android:contentDescription="Decrease intensity" />
@@ -60,7 +60,7 @@
             android:layout_height="32dp"
             android:gravity="center"
             android:text="+"
-            android:textColor="#FFFFFF"
+            android:textColor="#F2FFFFFF"
             android:textSize="20sp"
             android:textStyle="bold"
             android:contentDescription="Increase intensity" />

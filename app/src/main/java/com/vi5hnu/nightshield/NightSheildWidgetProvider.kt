@@ -45,8 +45,12 @@ class NightShieldWidgetProvider : AppWidgetProvider() {
             )
             views.setOnClickPendingIntent(R.id.widgetTextStrip, openAppIntent)
 
-            // Apply widget style — floating pill on icon, no harsh strip
+            // Apply widget style — floating pill on icon, no harsh strip.
+            // Gated like every other stored Pro value: the style can outlive entitlement (restored
+            // backup, refund handled elsewhere). Uses the cached flag rather than ProGate because a
+            // widget update can run in a cold process where the gate has not been populated.
             val style = OverlayHelpers.loadWidgetStyle(context)
+                .gatedBy(BillingManager.isProCached(context))
             when (style) {
                 NightShieldManager.WidgetStyle.MINIMAL -> {
                     views.setViewVisibility(R.id.widgetTextStrip, View.GONE)

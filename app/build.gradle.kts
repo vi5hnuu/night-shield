@@ -15,7 +15,7 @@ val localProps = Properties().apply {
 
 android {
     namespace = "com.vi5hnu.nightshield"
-    compileSdk = 35
+    compileSdk = 36
 
     signingConfigs {
         create("release") {
@@ -35,9 +35,9 @@ android {
     defaultConfig {
         applicationId = "com.vi5hnu.nightshield"
         minSdk = 29
-        targetSdk = 35
-        versionCode = 11
-        versionName = "3.3.1"
+        targetSdk = 36
+        versionCode = 12
+        versionName = "3.3.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -64,6 +64,8 @@ android {
     }
     buildFeatures {
         compose = true
+        // Lets the About row read the real version name instead of a hardcoded string.
+        buildConfig = true
     }
 
     lint {
