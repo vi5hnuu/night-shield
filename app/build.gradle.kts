@@ -64,6 +64,8 @@ android {
     }
     buildFeatures {
         compose = true
+        // Lets the About row read the real version name instead of a hardcoded string.
+        buildConfig = true
     }
 
     lint {

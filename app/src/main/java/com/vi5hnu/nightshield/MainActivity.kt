@@ -16,7 +16,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import com.google.android.gms.ads.MobileAds
 import com.google.android.play.core.review.ReviewManagerFactory
-import com.vi5hnu.nightshield.screens.HomeScreen
+import com.vi5hnu.nightshield.screens.NightShieldActions
+import com.vi5hnu.nightshield.screens.NightShieldApp
 import com.vi5hnu.nightshield.screens.OnboardingScreen
 import com.vi5hnu.nightshield.ui.theme.NightShieldTheme
 
@@ -205,35 +206,43 @@ class MainActivity : ComponentActivity() {
                         showOnboarding = false
                     })
                 } else {
-                    HomeScreen(
-                        onAllowShake         = {
-                            NightShieldManager.setAllowShake(it)
-                            OverlayHelpers.saveFilterSettings(
-                                applicationContext,
-                                NightShieldManager.canvasColor.value,
-                                NightShieldManager.filterIntensity.value,
-                                it,
-                            )
-                            // Shake toggle changed — start or stop the background monitor + in-app detector.
-                            NightShieldController.syncShakeMonitor(applicationContext)
-                            syncInAppShake()
-                        },
-                        allowShake           = NightShieldManager.allowShake.collectAsState().value,
-                        areServicesActive    = areServicesActive,
+                    // Built once and passed down: every callback below needs this Activity or one
+                    // of its result launchers, so none of them can live inside the screens.
+                    val actions = remember {
+                        NightShieldActions(
+                            onAllowShake = {
+                                NightShieldManager.setAllowShake(it)
+                                OverlayHelpers.saveFilterSettings(
+                                    applicationContext,
+                                    NightShieldManager.canvasColor.value,
+                                    NightShieldManager.filterIntensity.value,
+                                    it,
+                                )
+                                // Shake toggle changed — start or stop the background monitor + in-app detector.
+                                NightShieldController.syncShakeMonitor(applicationContext)
+                                syncInAppShake()
+                            },
+                            onPermissionRequest = { requestOverlayPermission() },
+                            launchOverlays = { launchOverlays() },
+                            stopOverlays = { stopOverlays() },
+                            onUpgradePromptShown = { OverlayHelpers.markUpgradePromptShown(applicationContext) },
+                            onPurchase = { BillingManager.purchase(this@MainActivity) },
+                            onRestorePurchase = { BillingManager.restore(this@MainActivity) },
+                            onExportSettings = { createDocumentLauncher.launch("nightshield_backup.json") },
+                            onImportSettings = { openDocumentLauncher.launch(arrayOf("application/json")) },
+                            onEnableAutoSchedule = { enableAutoSchedule() },
+                            onDisableAutoSchedule = { disableAutoSchedule() },
+                            onRefreshLocation = { refreshLocation() },
+                        )
+                    }
+
+                    NightShieldApp(
                         hasOverlayPermission = hasOverlayPermission.value,
-                        onPermissionRequest  = { requestOverlayPermission() },
-                        launchOverlays       = { launchOverlays() },
-                        stopOverlays         = { stopOverlays() },
+                        areServicesActive    = areServicesActive,
+                        allowShake           = NightShieldManager.allowShake.collectAsState().value,
                         isPro                = isPro,
                         triggerUpgradePrompt = triggerUpgrade,
-                        onUpgradePromptShown = { OverlayHelpers.markUpgradePromptShown(applicationContext) },
-                        onPurchase           = { BillingManager.purchase(this@MainActivity) },
-                        onRestorePurchase    = { BillingManager.restore(this@MainActivity) },
-                        onExportSettings     = { createDocumentLauncher.launch("nightshield_backup.json") },
-                        onImportSettings     = { openDocumentLauncher.launch(arrayOf("application/json")) },
-                        onEnableAutoSchedule = { enableAutoSchedule() },
-                        onDisableAutoSchedule = { disableAutoSchedule() },
-                        onRefreshLocation    = { refreshLocation() },
+                        actions              = actions,
                     )
                 }
             }
