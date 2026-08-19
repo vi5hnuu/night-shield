@@ -30,6 +30,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -148,7 +149,13 @@ fun AppsScreen(
                     modifier = Modifier.weight(1f),
                 )
                 if (canAddMore) {
-                    FilledTonalIconButton(onClick = { showAppPicker = true }) {
+                    FilledTonalIconButton(
+                        onClick = { showAppPicker = true },
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        ),
+                    ) {
                         Icon(painterResource(R.drawable.ic_add_24), contentDescription = "Add app")
                     }
                 } else {

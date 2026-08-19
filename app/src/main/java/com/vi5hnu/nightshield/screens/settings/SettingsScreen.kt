@@ -80,10 +80,17 @@ fun SettingsScreen(
 
         SettingsGroup {
             val currentStyle by NightShieldManager.widgetStyle.collectAsState()
+            // The lock lives on the group header: repeating a badge on each of the three rows made
+            // the paywall shout three times for one decision.
+            GroupHeader(
+                title = "Home screen widget",
+                subtitle = if (isPro) "Choose how the widget looks" else "Pick a widget layout with Pro",
+                trailing = { if (!isPro) ProBadge(onClick = onShowUpgrade) },
+            )
             NightShieldManager.WidgetStyle.entries.forEachIndexed { index, style ->
                 SettingRow(
                     icon = R.drawable.ic_widgets_24,
-                    title = style.label + " widget",
+                    title = style.label,
                     subtitle = when (style) {
                         NightShieldManager.WidgetStyle.STANDARD -> "Icon with a toggle button"
                         NightShieldManager.WidgetStyle.MINIMAL -> "Icon only — the smallest footprint"
@@ -95,13 +102,7 @@ fun SettingsScreen(
                     } else {
                         onShowUpgrade
                     },
-                    trailing = {
-                        if (isPro) {
-                            SelectionMark(selected = currentStyle == style)
-                        } else if (index == 0) {
-                            ProBadge(onClick = onShowUpgrade)
-                        }
-                    },
+                    trailing = { if (isPro) SelectionMark(selected = currentStyle == style) },
                 )
                 if (index < NightShieldManager.WidgetStyle.entries.lastIndex) SettingsDivider()
             }
@@ -253,29 +254,12 @@ private fun ThemePicker(isPro: Boolean, onShowUpgrade: () -> Unit) {
     val currentTheme by NightShieldManager.appTheme.collectAsState()
 
     SettingsGroup {
-        Column(modifier = Modifier.padding(Spacing.lg)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "App theme",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        currentTheme.label,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (!isPro) ProBadge(onClick = onShowUpgrade)
-            }
-
-            Spacer(Modifier.height(Spacing.lg))
-
+        GroupHeader(
+            title = "App theme",
+            subtitle = currentTheme.label,
+            trailing = { if (!isPro) ProBadge(onClick = onShowUpgrade) },
+        )
+        Column(modifier = Modifier.padding(start = Spacing.lg, end = Spacing.lg, bottom = Spacing.lg)) {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 NightShieldManager.AppTheme.entries.chunked(4).forEach { row ->
                     Row(
@@ -304,6 +288,11 @@ private fun ThemePicker(isPro: Boolean, onShowUpgrade: () -> Unit) {
     }
 }
 
+/**
+ * One theme option, drawn as a miniature of the screen it produces: the theme's own background, a
+ * card band and its accent. A locked theme keeps its colours visible — hiding them behind a scrim
+ * would defeat the point of showing a swatch — and carries a small lock in the corner instead.
+ */
 @Composable
 private fun ThemeSwatch(
     theme: NightShieldManager.AppTheme,
@@ -313,10 +302,10 @@ private fun ThemeSwatch(
     onClick: () -> Unit,
 ) {
     val palette = paletteFor(theme)
-    // Material You has no static palette — show the current scheme's own colours instead.
-    val background = palette?.background ?: MaterialTheme.colorScheme.surfaceContainerHighest
+    // Material You has no static palette — mirror the scheme currently in effect instead.
+    val background = palette?.background ?: MaterialTheme.colorScheme.background
     val accent = palette?.primary ?: MaterialTheme.colorScheme.primary
-    val surface = palette?.surfaceContainerHigh ?: MaterialTheme.colorScheme.surfaceContainerHigh
+    val card = palette?.surfaceContainerHigh ?: MaterialTheme.colorScheme.surfaceContainerHigh
 
     Column(
         modifier = modifier.clickable(onClick = onClick),
@@ -325,7 +314,7 @@ private fun ThemeSwatch(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
+                .height(64.dp)
                 .clip(RoundedCornerShape(Radius.sm))
                 .background(background)
                 .border(
@@ -334,27 +323,69 @@ private fun ThemeSwatch(
                     else MaterialTheme.colorScheme.outlineVariant,
                     shape = RoundedCornerShape(Radius.sm),
                 ),
-            contentAlignment = Alignment.Center,
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            // Miniature of a screen: accent pill over a card band.
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                Box(Modifier.size(14.dp).background(accent, CircleShape))
-                Box(Modifier.size(10.dp).background(surface, CircleShape))
+                Box(
+                    Modifier
+                        .fillMaxWidth(0.6f)
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(accent),
+                )
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(card),
+                )
+                Box(
+                    Modifier
+                        .fillMaxWidth(0.75f)
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(card),
+                )
             }
             if (!unlocked) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.45f)),
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.55f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         painterResource(R.drawable.ic_lock_24),
-                        contentDescription = "Pro theme",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(IconSize.sm),
+                        contentDescription = "Requires Pro",
+                        tint = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(11.dp),
+                    )
+                }
+            }
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(4.dp)
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_check_24),
+                        contentDescription = "Selected",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(12.dp),
                     )
                 }
             }
@@ -368,6 +399,38 @@ private fun ThemeSwatch(
             maxLines = 1,
             textAlign = TextAlign.Center,
         )
+    }
+}
+
+/** Title row for a group whose rows share one setting or one paywall. */
+@Composable
+private fun GroupHeader(
+    title: String,
+    subtitle: String? = null,
+    trailing: @Composable () -> Unit = {},
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = Spacing.lg, end = Spacing.lg, top = Spacing.lg, bottom = Spacing.md),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        trailing()
     }
 }
 

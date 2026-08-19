@@ -361,15 +361,15 @@ private fun FilterHero(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = Spacing.xl, vertical = Spacing.xxl),
+                    .padding(horizontal = Spacing.xl, vertical = Spacing.xl),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // Status ring
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(132.dp)) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(120.dp)) {
                     if (areServicesActive) {
                         Box(
                             modifier = Modifier
-                                .size(132.dp)
+                                .size(120.dp)
                                 .background(
                                     MaterialTheme.colorScheme.primary.copy(alpha = glowAlpha * 0.10f),
                                     CircleShape,
@@ -377,7 +377,7 @@ private fun FilterHero(
                         )
                         Box(
                             modifier = Modifier
-                                .size(104.dp)
+                                .size(96.dp)
                                 .background(
                                     MaterialTheme.colorScheme.primary.copy(alpha = glowAlpha * 0.16f),
                                     CircleShape,
@@ -387,7 +387,7 @@ private fun FilterHero(
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(84.dp)
+                            .size(80.dp)
                             .scale(iconScale)
                             .clip(CircleShape)
                             .background(
@@ -484,12 +484,10 @@ private fun FilterHero(
                     shape = RoundedCornerShape(Radius.md),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = when {
-                            !hasOverlayPermission -> MaterialTheme.colorScheme.secondary
                             areServicesActive -> MaterialTheme.colorScheme.surfaceContainerHighest
                             else -> MaterialTheme.colorScheme.primary
                         },
                         contentColor = when {
-                            !hasOverlayPermission -> MaterialTheme.colorScheme.onSecondary
                             areServicesActive -> MaterialTheme.colorScheme.onSurface
                             else -> MaterialTheme.colorScheme.onPrimary
                         },

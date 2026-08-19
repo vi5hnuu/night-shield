@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -175,7 +176,13 @@ private fun SchedulesGroup(isPro: Boolean, onShowUpgrade: () -> Unit) {
                 )
             }
             if (canAddMore) {
-                FilledTonalIconButton(onClick = { showAddDialog = true }) {
+                FilledTonalIconButton(
+                    onClick = { showAddDialog = true },
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                ) {
                     Icon(
                         painterResource(R.drawable.ic_add_24),
                         contentDescription = stringResource(R.string.schedule_add),

@@ -48,7 +48,15 @@ fun InfoBanner(
         color = container,
         contentColor = content,
     ) {
-        Column(modifier = Modifier.padding(Spacing.md)) {
+        Column(
+            modifier = Modifier.padding(
+                start = Spacing.md,
+                end = Spacing.md,
+                top = Spacing.md,
+                // A trailing action row brings its own button padding, so the banner needs less.
+                bottom = if (actions.isEmpty()) Spacing.md else Spacing.xs,
+            ),
+        ) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md),
                 verticalAlignment = Alignment.Top,
@@ -71,9 +79,7 @@ fun InfoBanner(
             }
             if (actions.isNotEmpty()) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = Spacing.xs),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.xs, Alignment.End),
                 ) {
                     actions.forEach { action ->
