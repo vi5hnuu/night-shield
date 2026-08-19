@@ -52,7 +52,7 @@ private data class OnboardingPage(
 )
 
 private val pages = listOf(
-    OnboardingPage(R.drawable.shield_inactive, R.string.onboarding_title_1, R.string.onboarding_body_1),
+    OnboardingPage(R.drawable.ic_shield_24, R.string.onboarding_title_1, R.string.onboarding_body_1),
     OnboardingPage(R.drawable.ic_vibration_24, R.string.onboarding_title_2, R.string.onboarding_body_2),
     OnboardingPage(R.drawable.ic_palette_24, R.string.onboarding_title_3, R.string.onboarding_body_3),
 )

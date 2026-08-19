@@ -24,6 +24,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -352,6 +353,10 @@ private fun AddScheduleDialog(
                                             .background(actionColor(action), CircleShape),
                                     )
                                 },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                ),
                                 modifier = Modifier.weight(1f),
                             )
                         }
@@ -374,6 +379,10 @@ private fun AddScheduleDialog(
                                         .background(actionColor(ScheduleAction.SUNRISE), CircleShape),
                                 )
                             },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            ),
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
