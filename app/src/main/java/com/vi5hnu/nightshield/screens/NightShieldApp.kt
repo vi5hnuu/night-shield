@@ -106,8 +106,9 @@ fun NightShieldApp(
             title = { Text("Enjoying Night Shield?", style = MaterialTheme.typography.titleMedium) },
             text = {
                 Text(
-                    "Unlock Smart Profiles, Blue Light Report, Gradual Fade-in and 8 more Pro " +
-                        "features — one payment, no subscription, forever yours.",
+                    "Go ad-free and unlock auto sunset, the bedtime routine and " +
+                        "${PRO_FEATURE_COUNT - 3} more Pro features — one payment, no " +
+                        "subscription, forever yours.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
