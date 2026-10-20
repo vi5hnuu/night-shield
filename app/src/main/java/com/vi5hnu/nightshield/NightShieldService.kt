@@ -91,7 +91,7 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        UsageTracker.recordStart()
+        UsageTracker.recordStart(applicationContext)
         bootstrapManagerIfNeeded()
         // Claim the active state now (also covers START_STICKY restarts, which re-run onCreate
         // with intent=null in onStartCommand). NOTE: the shake monitor is deliberately NOT stopped
