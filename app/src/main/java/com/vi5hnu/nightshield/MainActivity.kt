@@ -26,6 +26,12 @@ class MainActivity : ComponentActivity() {
 
     private var hasOverlayPermission = mutableStateOf(false)
 
+    /**
+     * Set when the activity is opened to show the paywall (a locked widget control). Consumed by
+     * the UI once shown, so a rotation or resume does not reopen it.
+     */
+    private val upgradeRequested = mutableStateOf(false)
+
     private val prefs by lazy { getSharedPreferences("overlay_prefs", MODE_PRIVATE) }
 
     // ── Backup: export JSON to a user-chosen file ─────────────────────────────
@@ -131,6 +137,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        consumeUpgradeRequest(intent)
 
         MobileAds.initialize(this)
         AppOpenAdManager.loadAd(this)
@@ -269,10 +276,24 @@ class MainActivity : ComponentActivity() {
                         allowShake           = NightShieldManager.allowShake.collectAsState().value,
                         isPro                = isPro,
                         triggerUpgradePrompt = triggerUpgrade,
+                        upgradeRequested     = upgradeRequested.value,
+                        onUpgradeRequestHandled = { upgradeRequested.value = false },
                         actions              = actions,
                     )
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        consumeUpgradeRequest(intent)
+    }
+
+    private fun consumeUpgradeRequest(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_SHOW_UPGRADE, false) == true) {
+            upgradeRequested.value = true
+            intent.removeExtra(EXTRA_SHOW_UPGRADE)
         }
     }
 
@@ -384,5 +405,10 @@ class MainActivity : ComponentActivity() {
         OverlayHelpers.saveDarkModeSync(this, NightShieldManager.darkModeAutoSync.value)
         // Schedules were previously armed uncapped here, so a refunded user kept every alarm.
         AlarmHelpers.commit(this, NightShieldManager.schedules.value)
+    }
+
+    companion object {
+        /** Boolean extra: open straight to the Pro upgrade screen. */
+        const val EXTRA_SHOW_UPGRADE = "show_upgrade"
     }
 }

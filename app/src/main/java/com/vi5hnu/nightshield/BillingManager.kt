@@ -366,8 +366,17 @@ object BillingManager {
         ) { /* Failures retry on the next queryPurchases, well inside Play's 3-day window. */ }
     }
 
-    private fun setProCache(context: Context, isPro: Boolean) =
-        context.billingPrefs().edit().putBoolean(KEY_IS_PRO, isPro).apply()
+    private fun setProCache(context: Context, isPro: Boolean) {
+        val prefs = context.billingPrefs()
+        val changed = prefs.getBoolean(KEY_IS_PRO, false) != isPro
+        prefs.edit().putBoolean(KEY_IS_PRO, isPro).apply()
+        // Widgets render Pro-only controls from this cache, so they must redraw when it flips —
+        // otherwise a new buyer's intensity widget stays locked until the next unrelated update.
+        if (changed) {
+            NightShieldWidgetProvider.updateWidget(context)
+            IntensityWidgetProvider.updateAll(context)
+        }
+    }
 
     /** Billing callbacks arrive off the main thread; Toast requires the main looper. */
     private fun toast(context: Context, message: String) {

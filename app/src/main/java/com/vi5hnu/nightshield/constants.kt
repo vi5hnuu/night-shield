@@ -405,8 +405,9 @@ object OverlayHelpers {
             NightShieldManager.setAppFilterConfigs(stripped)
         }
 
-        // 6. Update widget to reflect new style
+        // 6. Update widgets to reflect the new style and the locked intensity controls
         NightShieldWidgetProvider.updateWidget(context)
+        IntensityWidgetProvider.updateAll(context)
     }
 
     private fun todayEpochDay(): Long =

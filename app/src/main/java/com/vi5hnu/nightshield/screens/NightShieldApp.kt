@@ -28,6 +28,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,11 +82,21 @@ fun NightShieldApp(
     allowShake: Boolean,
     isPro: Boolean,
     triggerUpgradePrompt: Boolean,
+    /** The host was opened to show the paywall (e.g. from a locked widget control). */
+    upgradeRequested: Boolean,
+    onUpgradeRequestHandled: () -> Unit,
     actions: NightShieldActions,
 ) {
     var currentTab by remember { mutableStateOf(NightShieldTab.FILTER) }
     var showUpgradeScreen by remember { mutableStateOf(false) }
     var showUpgradeDialog by remember { mutableStateOf(triggerUpgradePrompt) }
+
+    LaunchedEffect(upgradeRequested) {
+        if (upgradeRequested) {
+            showUpgradeScreen = true
+            onUpgradeRequestHandled()
+        }
+    }
 
     // Contextual upgrade prompt — fires once after sufficient engagement.
     if (showUpgradeDialog) {
