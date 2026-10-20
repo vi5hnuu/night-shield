@@ -8,6 +8,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -21,6 +25,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -34,6 +41,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -47,6 +55,8 @@ import com.vi5hnu.nightshield.screens.filter.FilterScreen
 import com.vi5hnu.nightshield.screens.schedule.ScheduleScreen
 import com.vi5hnu.nightshield.screens.settings.SettingsScreen
 import com.vi5hnu.nightshield.ui.components.ProBadge
+import com.vi5hnu.nightshield.ui.components.readableWidth
+import com.vi5hnu.nightshield.ui.theme.AdaptiveLayout
 import com.vi5hnu.nightshield.ui.theme.IconSize
 import com.vi5hnu.nightshield.ui.theme.Radius
 
@@ -154,6 +164,8 @@ fun NightShieldApp(
     }
 
     val showUpgrade = { showUpgradeScreen = true }
+    // Tablets, foldables and landscape get a side rail instead of a stretched bottom bar.
+    val useRail = LocalConfiguration.current.screenWidthDp >= AdaptiveLayout.expandedWidthDp
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -186,7 +198,7 @@ fun NightShieldApp(
                 // Banner ad (free users only) sits above the nav bar so it never covers content
                 // or the navigation itself.
                 if (!isPro) BannerAd()
-                NavigationBar(
+                if (!useRail) NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer,
                 ) {
                     NightShieldTab.entries.forEach { tab ->
@@ -214,43 +226,82 @@ fun NightShieldApp(
             }
         },
     ) { innerPadding ->
-        Surface(
+        Row(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            color = MaterialTheme.colorScheme.background,
         ) {
-            AnimatedContent(
-                targetState = currentTab,
-                transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(120)) },
-                label = "tab",
-            ) { tab ->
-                when (tab) {
-                    NightShieldTab.FILTER -> FilterScreen(
-                        hasOverlayPermission = hasOverlayPermission,
-                        areServicesActive = areServicesActive,
-                        allowShake = allowShake,
-                        isPro = isPro,
-                        actions = actions,
-                        onShowUpgrade = showUpgrade,
-                    )
+            if (useRail) {
+                NavigationRail(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    // Scaffold's innerPadding already carries the system-bar insets.
+                    windowInsets = WindowInsets(0),
+                ) {
+                    Spacer(Modifier.weight(1f))
+                    NightShieldTab.entries.forEach { tab ->
+                        NavigationRailItem(
+                            selected = currentTab == tab,
+                            onClick = { currentTab = tab },
+                            icon = {
+                                Icon(
+                                    painter = painterResource(tab.icon),
+                                    contentDescription = tab.label,
+                                    modifier = Modifier.size(IconSize.md),
+                                )
+                            },
+                            label = { Text(tab.label, style = MaterialTheme.typography.labelSmall) },
+                            colors = NavigationRailItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                }
+            }
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                AnimatedContent(
+                    targetState = currentTab,
+                    // Centred, width-capped column on tablets; full width on phones.
+                    modifier = Modifier.fillMaxHeight().readableWidth(),
+                    transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(120)) },
+                    label = "tab",
+                ) { tab ->
+                    when (tab) {
+                        NightShieldTab.FILTER -> FilterScreen(
+                            hasOverlayPermission = hasOverlayPermission,
+                            areServicesActive = areServicesActive,
+                            allowShake = allowShake,
+                            isPro = isPro,
+                            actions = actions,
+                            onShowUpgrade = showUpgrade,
+                        )
 
-                    NightShieldTab.SCHEDULE -> ScheduleScreen(
-                        isPro = isPro,
-                        actions = actions,
-                        onShowUpgrade = showUpgrade,
-                    )
+                        NightShieldTab.SCHEDULE -> ScheduleScreen(
+                            isPro = isPro,
+                            actions = actions,
+                            onShowUpgrade = showUpgrade,
+                        )
 
-                    NightShieldTab.APPS -> AppsScreen(
-                        isPro = isPro,
-                        onShowUpgrade = showUpgrade,
-                    )
+                        NightShieldTab.APPS -> AppsScreen(
+                            isPro = isPro,
+                            onShowUpgrade = showUpgrade,
+                        )
 
-                    NightShieldTab.SETTINGS -> SettingsScreen(
-                        isPro = isPro,
-                        actions = actions,
-                        onShowUpgrade = showUpgrade,
-                    )
+                        NightShieldTab.SETTINGS -> SettingsScreen(
+                            isPro = isPro,
+                            actions = actions,
+                            onShowUpgrade = showUpgrade,
+                        )
+                    }
                 }
             }
         }

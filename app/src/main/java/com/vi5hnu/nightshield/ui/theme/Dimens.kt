@@ -55,3 +55,17 @@ object IconSize {
     /** Hero / empty-state illustration. */
     val xl = 44.dp
 }
+
+/**
+ * Breakpoints for large screens (tablets, foldables, landscape).
+ *
+ * Settings-style content stretched across a 10" display is hard to read, so screens cap their
+ * width at [contentMaxWidth] and centre it, and from [expandedWidth] the bottom bar becomes a
+ * navigation rail. Plain dp thresholds (Material's compact/medium split) — no window-size library.
+ */
+object AdaptiveLayout {
+    /** Widest a column of settings/content may grow. */
+    val contentMaxWidth = 640.dp
+    /** At or above this window width, navigation moves to a side rail. */
+    const val expandedWidthDp = 600
+}

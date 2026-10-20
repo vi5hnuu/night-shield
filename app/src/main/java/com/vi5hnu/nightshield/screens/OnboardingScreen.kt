@@ -41,6 +41,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.vi5hnu.nightshield.R
+import com.vi5hnu.nightshield.ui.components.readableWidth
 import com.vi5hnu.nightshield.ui.theme.Radius
 import com.vi5hnu.nightshield.ui.theme.Spacing
 import kotlinx.coroutines.launch
@@ -71,7 +72,9 @@ fun OnboardingScreen(onComplete: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .systemBarsPadding(),
+                .systemBarsPadding()
+                // A phone-width column on tablets keeps the art, copy and button together.
+                .readableWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Skip sits in the top bar so it never competes with the primary button below.

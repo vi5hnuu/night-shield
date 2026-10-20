@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.vi5hnu.nightshield.BillingManager
 import com.vi5hnu.nightshield.FreeTier
 import com.vi5hnu.nightshield.R
+import com.vi5hnu.nightshield.ui.components.readableWidth
 import com.vi5hnu.nightshield.ui.theme.IconSize
 import com.vi5hnu.nightshield.ui.theme.Radius
 import com.vi5hnu.nightshield.ui.theme.Spacing
@@ -143,7 +144,8 @@ fun UpgradeScreen(
         }
 
         LazyColumn(
-            modifier = Modifier.weight(1f),
+            // Centred, width-capped on tablets so the feature list stays scannable.
+            modifier = Modifier.weight(1f).readableWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
             contentPadding = PaddingValues(horizontal = Spacing.xl, vertical = Spacing.sm),
         ) {
@@ -181,6 +183,7 @@ fun UpgradeScreen(
             ) {
                 Column(
                     modifier = Modifier
+                        .readableWidth()
                         .padding(horizontal = Spacing.xl, vertical = Spacing.md)
                         .navigationBarsPadding(),
                     horizontalAlignment = Alignment.CenterHorizontally,
