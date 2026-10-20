@@ -247,8 +247,12 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
      */
     private fun startSunriseMode() {
         sunriseJob?.cancel()
-        val startIntensity = NightShieldManager.filterIntensity.value.coerceAtLeast(0.8f)
-        NightShieldManager.setFilterIntensity(startIntensity)
+        // The ramp drives the fade multiplier, never the user's intensity. It used to write the
+        // intensity itself (forcing it to ≥80% then down to ~0), and that near-zero value was then
+        // persisted — the next time the filter was switched on it was practically invisible.
+        // onDestroy resets the multiplier, so nothing leaks into the next activation.
+        fadeJob?.cancel()
+        NightShieldManager.setFadeMultiplier(1f)
         val startTime = System.currentTimeMillis()
         sunriseJob = serviceScope.launch {
             while (true) {
@@ -262,8 +266,8 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     break
                 }
                 val progress = elapsed.toFloat() / SUNRISE_DURATION_MS
-                // Interpolate from startIntensity → 0
-                NightShieldManager.setFilterIntensity(startIntensity * (1f - progress))
+                // Lift the filter from full strength → 0 over the sunrise window.
+                NightShieldManager.setFadeMultiplier(1f - progress)
                 delay(30_000L)  // update every 30 s — smooth enough, battery-friendly
             }
         }
