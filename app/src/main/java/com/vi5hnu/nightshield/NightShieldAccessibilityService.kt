@@ -24,11 +24,11 @@ class NightShieldAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         serviceInfo = AccessibilityServiceInfo().apply {
-            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                         AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            // Only app switches matter. Content-changed events (fired on every scroll/redraw) and
+            // interactive-window retrieval were subscribed to but never used — pure battery cost.
+            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             notificationTimeout = 100
-            flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
 
         // Bootstrap NightShieldManager from persisted prefs when the process
@@ -56,7 +56,12 @@ class NightShieldAccessibilityService : AccessibilityService() {
     }
 
     private fun applyRuleForPackage(packageName: String) {
-        val config = NightShieldManager.appFilterConfigs.value[packageName]
+        // Only rules inside the user's allowance apply — rules over the free cap (kept from a Pro
+        // period, e.g. after a refund) used to keep working for free.
+        val config = FreeTier.activeAppRules(
+            NightShieldManager.appFilterConfigs.value,
+            ProGate.isPro.value,
+        )[packageName]
 
         if (config != null) {
             // Snapshot only the fields that will actually be overridden, and restore
