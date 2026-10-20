@@ -258,7 +258,7 @@ private fun UpgradeCard(onShowUpgrade: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    "Profiles, themes, automation and more — one payment",
+                    "No ads, auto sunset, bedtime routine and more — one payment",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

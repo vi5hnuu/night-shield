@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -194,7 +195,9 @@ fun NightShieldApp(
             )
         },
         bottomBar = {
-            Column {
+            // With the rail there is no NavigationBar to absorb the system-bar inset, so the
+            // column takes it — otherwise the banner sits under the gesture handle.
+            Column(modifier = if (useRail) Modifier.navigationBarsPadding() else Modifier) {
                 // Banner ad (free users only) sits above the nav bar so it never covers content
                 // or the navigation itself.
                 if (!isPro) BannerAd()
