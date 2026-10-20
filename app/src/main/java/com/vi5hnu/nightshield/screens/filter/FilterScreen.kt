@@ -682,8 +682,6 @@ private fun ShakeGroup(
     onAllowShake: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
 
     SettingsGroup {
         SettingRow(
@@ -747,18 +745,12 @@ private fun ShakeGroup(
                     )
                 }
 
-                // Turning the filter ON by shake while the app is closed needs the accessibility
-                // service. Re-checked on each lifecycle change so the hint clears immediately.
-                val accessibilityEnabled = remember(lifecycleState) {
-                    val enabled = android.provider.Settings.Secure.getString(
-                        context.contentResolver,
-                        android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-                    ) ?: ""
-                    enabled.contains(context.packageName, ignoreCase = true)
-                }
-                if (!accessibilityEnabled) {
+                // Shake-to-ON with the app closed comes from ShakeMonitorService, not the
+                // accessibility service (the old hint here still sent users to Accessibility
+                // settings). The only thing that limits it now is Background shake being off.
+                if (!backgroundShake) {
                     InfoBanner(
-                        text = "To turn the filter on by shaking while the app is closed, enable Night Shield in Accessibility settings.",
+                        text = "Background shake is off, so shaking only toggles the filter while Night Shield is open.",
                         modifier = Modifier.padding(
                             start = Spacing.lg,
                             end = Spacing.lg,
