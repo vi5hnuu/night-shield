@@ -206,6 +206,7 @@ private fun SchedulesGroup(
             }
             if (canAddMore) {
                 FilledTonalIconButton(
+                    shape = RoundedCornerShape(Radius.md),
                     onClick = { showAddDialog = true },
                     colors = IconButtonDefaults.filledTonalIconButtonColors(
                         containerColor = MaterialTheme.colorScheme.primaryContainer,

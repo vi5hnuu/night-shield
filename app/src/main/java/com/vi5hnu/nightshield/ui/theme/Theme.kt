@@ -1,11 +1,14 @@
 package com.vi5hnu.nightshield.ui.theme
 
 import android.os.Build
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import com.vi5hnu.nightshield.NightShieldManager
 
 /**
@@ -27,6 +30,19 @@ fun paletteFor(theme: NightShieldManager.AppTheme): NightPalette? = when (theme)
 }
 
 /**
+ * M3 shape roles on the app's [Radius] scale, so components that take their corners from the
+ * theme (dialogs, bottom sheets, chips, menus, snackbars) match the hand-built surfaces instead of
+ * M3's much rounder defaults (dialogs and sheets are 28dp out of the box).
+ */
+val NightShieldShapes = Shapes(
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(Radius.sm),
+    medium = RoundedCornerShape(Radius.md),
+    large = RoundedCornerShape(Radius.lg),
+    extraLarge = RoundedCornerShape(Radius.xl),
+)
+
+/**
  * The app is dark-only by design — it is a night-time eye-comfort tool, and a light scheme would
  * fight the product's purpose. Every palette is therefore a dark scheme.
  */
@@ -46,6 +62,7 @@ fun NightShieldTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = NightShieldTypography,
+        shapes = NightShieldShapes,
         content = content,
     )
 }

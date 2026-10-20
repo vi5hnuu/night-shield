@@ -446,7 +446,7 @@ private fun FilterHero(
                 if (streakDays >= 1) {
                     Spacer(Modifier.height(Spacing.md))
                     Surface(
-                        shape = RoundedCornerShape(50),
+                        shape = RoundedCornerShape(Radius.sm),
                         color = MaterialTheme.colorScheme.secondaryContainer,
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     ) {

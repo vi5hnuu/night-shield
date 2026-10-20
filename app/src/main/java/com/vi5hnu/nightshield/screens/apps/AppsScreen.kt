@@ -170,6 +170,7 @@ fun AppsScreen(
                 )
                 if (canAddMore) {
                     FilledTonalIconButton(
+                        shape = RoundedCornerShape(Radius.md),
                         onClick = { showAppPicker = true },
                         colors = IconButtonDefaults.filledTonalIconButtonColors(
                             containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -255,8 +256,14 @@ private fun AccessibilityDialog(onDismiss: () -> Unit, onAllow: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
-        confirmButton = { Button(onClick = onAllow) { Text("Allow") } },
-        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("No thanks") } },
+        confirmButton = {
+            Button(onClick = onAllow, shape = RoundedCornerShape(Radius.md)) { Text("Allow") }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss, shape = RoundedCornerShape(Radius.md)) {
+                Text("No thanks")
+            }
+        },
     )
 }
 

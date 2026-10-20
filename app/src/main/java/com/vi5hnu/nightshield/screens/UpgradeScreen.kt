@@ -221,7 +221,7 @@ private fun Header(isPro: Boolean) {
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(88.dp)
-                .clip(CircleShape)
+                .clip(RoundedCornerShape(Radius.xl))
                 .background(
                     Brush.radialGradient(
                         listOf(

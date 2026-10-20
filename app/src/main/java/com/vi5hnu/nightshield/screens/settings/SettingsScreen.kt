@@ -133,6 +133,7 @@ fun SettingsScreen(
                 trailing = {
                     if (isPro) {
                         FilledTonalButton(
+                            shape = RoundedCornerShape(Radius.md),
                             onClick = actions.onExportSettings,
                             contentPadding = PaddingValues(horizontal = Spacing.md, vertical = 6.dp),
                             modifier = Modifier.height(34.dp),
@@ -152,6 +153,7 @@ fun SettingsScreen(
                 trailing = {
                     if (isPro) {
                         FilledTonalButton(
+                            shape = RoundedCornerShape(Radius.md),
                             onClick = actions.onImportSettings,
                             contentPadding = PaddingValues(horizontal = Spacing.md, vertical = 6.dp),
                             modifier = Modifier.height(34.dp),
@@ -239,7 +241,7 @@ private fun UpgradeCard(onShowUpgrade: () -> Unit) {
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(Radius.md)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
