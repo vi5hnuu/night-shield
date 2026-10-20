@@ -361,11 +361,11 @@ class MainActivity : ComponentActivity() {
         OverlayHelpers.saveAdaptiveIntensity(this, NightShieldManager.adaptiveIntensity.value && ProGate.isPro.value)
         OverlayHelpers.saveAppTheme(this, NightShieldManager.appTheme.value)
         OverlayHelpers.saveWidgetStyle(this, NightShieldManager.widgetStyle.value)
-        OverlayHelpers.saveSchedules(this, NightShieldManager.schedules.value)
         OverlayHelpers.saveAppConfigs(this, NightShieldManager.appFilterConfigs.value)
         OverlayHelpers.saveProfiles(this, NightShieldManager.profiles.value)
         OverlayHelpers.saveEyeBreakEnabled(this, NightShieldManager.eyeBreakEnabled.value)
         OverlayHelpers.saveDarkModeSync(this, NightShieldManager.darkModeAutoSync.value)
-        AlarmHelpers.scheduleAll(this, NightShieldManager.schedules.value)
+        // Schedules were previously armed uncapped here, so a refunded user kept every alarm.
+        AlarmHelpers.commit(this, NightShieldManager.schedules.value)
     }
 }

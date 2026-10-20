@@ -46,6 +46,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.vi5hnu.nightshield.AlarmHelpers
+import com.vi5hnu.nightshield.FreeTier
 import com.vi5hnu.nightshield.NightShieldManager
 import com.vi5hnu.nightshield.OverlayHelpers
 import com.vi5hnu.nightshield.R
@@ -158,8 +160,15 @@ private fun SchedulesGroup(isPro: Boolean, onShowUpgrade: () -> Unit) {
     val context = LocalContext.current
     val schedules by NightShieldManager.schedules.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
-    // Free users get one schedule; Pro is unlimited.
-    val canAddMore = isPro || schedules.isEmpty()
+    // Free users get FreeTier.MAX_SCHEDULES; Pro is unlimited.
+    val canAddMore = isPro || schedules.size < FreeTier.MAX_SCHEDULES
+
+    // Every edit is saved and armed on the spot. It used to wait for onPause, so a schedule added
+    // just before the process died was lost, and an edit only took effect after leaving the app.
+    fun commitSchedules(edit: () -> Unit) {
+        edit()
+        AlarmHelpers.commit(context, NightShieldManager.schedules.value)
+    }
 
     SettingsGroup {
         Row(
@@ -205,8 +214,8 @@ private fun SchedulesGroup(isPro: Boolean, onShowUpgrade: () -> Unit) {
             schedules.forEachIndexed { index, entry ->
                 ScheduleRow(
                     entry = entry,
-                    onToggle = { NightShieldManager.toggleScheduleEnabled(entry.id) },
-                    onDelete = { NightShieldManager.removeSchedule(entry.id) },
+                    onToggle = { commitSchedules { NightShieldManager.toggleScheduleEnabled(entry.id) } },
+                    onDelete = { commitSchedules { NightShieldManager.removeSchedule(entry.id) } },
                 )
                 if (index < schedules.lastIndex) SettingsDivider()
             }
@@ -230,7 +239,7 @@ private fun SchedulesGroup(isPro: Boolean, onShowUpgrade: () -> Unit) {
                         Toast.LENGTH_SHORT,
                     ).show()
                 } else {
-                    NightShieldManager.addSchedule(entry)
+                    commitSchedules { NightShieldManager.addSchedule(entry) }
                 }
                 showAddDialog = false
             },

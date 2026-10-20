@@ -10,7 +10,6 @@ import android.provider.Settings
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.edit
-import androidx.core.net.toUri
 
 /** Cached device location used to compute local sunrise/sunset for the auto-schedule. */
 data class AutoLocation(val lat: Double, val lon: Double, val city: String)
@@ -383,13 +382,13 @@ object OverlayHelpers {
             AutoScheduleHelper.reschedule(context)
         }
 
-        // 4. Schedules → keep at most 1 (free limit)
+        // 4. Schedules → keep the free-tier allowance
         val schedules = loadSchedules(context)
-        if (schedules.size > 1) {
-            val trimmed = schedules.take(1)
+        if (schedules.size > FreeTier.MAX_SCHEDULES) {
+            val trimmed = FreeTier.activeSchedules(schedules, isPro = false)
             saveSchedules(context, trimmed)
             NightShieldManager.setSchedules(trimmed)
-            AlarmHelpers.scheduleAll(context, trimmed)
+            AlarmHelpers.rearm(context)
         }
 
         // 5. Per-app custom colors → stripped (custom color is Pro-only)
@@ -414,27 +413,50 @@ object OverlayHelpers {
 
 object AlarmHelpers {
     private const val RC_BASE = 2000
+    /**
+     * Request-code slots cleared on every re-arm. Cancelling only "current size + 10" left alarms
+     * behind when the list shrank by more than that (e.g. Pro revoked with many schedules).
+     */
+    private const val MAX_SLOTS = 64
 
     fun scheduleAll(context: Context, schedules: List<ScheduleEntry>) {
-        cancelAll(context, schedules.size + 10)
+        cancelAll(context, maxOf(MAX_SLOTS, schedules.size))
         schedules.filter { it.enabled }.forEachIndexed { index, entry ->
             scheduleEntry(context, entry, RC_BASE + index)
         }
     }
 
+    /**
+     * Arms the persisted schedules (free-tier capped) for their next occurrence.
+     *
+     * Alarms are one-shot, so this must run after every schedule fires — previously nothing
+     * re-armed them and each schedule fired once, then waited until the app was next paused.
+     * Reads from prefs so it is correct in a cold receiver process.
+     */
+    fun rearm(context: Context) {
+        scheduleAll(
+            context,
+            FreeTier.activeSchedules(OverlayHelpers.loadSchedules(context), ProGate.isPro.value),
+        )
+    }
+
+    /** Persists a schedule edit and arms it immediately, instead of waiting for onPause. */
+    fun commit(context: Context, schedules: List<ScheduleEntry>) {
+        OverlayHelpers.saveSchedules(context, schedules)
+        rearm(context)
+    }
+
     private fun scheduleEntry(context: Context, entry: ScheduleEntry, requestCode: Int) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
-            context.startActivity(
-                Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                    data = "package:${context.packageName}".toUri()
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            )
-            return
-        }
         val pendingIntent = buildPendingIntentWithExtras(context, requestCode, entry)
         val millis = nextMillis(entry.hour, entry.minute)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            // Exact alarms revoked by the user. This runs from onPause, boot and alarm receivers,
+            // so it must not launch a Settings screen (it used to — from the background). An
+            // inexact alarm still fires, just possibly a few minutes late.
+            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, pendingIntent)
+            return
+        }
         alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, pendingIntent)
     }
 

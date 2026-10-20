@@ -34,5 +34,9 @@ class OverlayAlarmReceiver : BroadcastReceiver() {
 
             ACTION_AUTO_RECOMPUTE -> AutoScheduleHelper.reschedule(context)
         }
+
+        // Fixed-time alarms are one-shot: arm tomorrow's occurrence now. Idempotent, so it is
+        // harmless when this broadcast came from the auto sunset/sunrise schedule instead.
+        if (action != ACTION_AUTO_RECOMPUTE) AlarmHelpers.rearm(context)
     }
 }
