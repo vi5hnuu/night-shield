@@ -1,6 +1,5 @@
 package com.vi5hnu.nightshield.screens.schedule
 
-import android.app.TimePickerDialog
 import android.content.Context
 import android.text.format.DateFormat
 import android.widget.Toast
@@ -24,6 +23,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -31,6 +31,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
+import androidx.compose.material3.TimeInput
+import androidx.compose.material3.TimePickerDefaults
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -315,6 +318,7 @@ private fun ScheduleRow(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddScheduleDialog(
     context: Context,
@@ -322,8 +326,13 @@ private fun AddScheduleDialog(
     onDismiss: () -> Unit,
     onConfirm: (ScheduleEntry) -> Unit,
 ) {
-    var selectedHour by remember { mutableIntStateOf(22) }
-    var selectedMinute by remember { mutableIntStateOf(0) }
+    // Inline M3 time entry instead of the platform TimePickerDialog, which opened a second,
+    // light-themed (green/cream) dialog on top of this dark one.
+    val timeState = rememberTimePickerState(
+        initialHour = 22,
+        initialMinute = 0,
+        is24Hour = DateFormat.is24HourFormat(context),
+    )
     var selectedAction by remember { mutableStateOf(ScheduleAction.ON) }
 
     AlertDialog(
@@ -332,31 +341,16 @@ private fun AddScheduleDialog(
         title = { Text(stringResource(R.string.schedule_add), style = MaterialTheme.typography.titleMedium) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.lg)) {
-                OutlinedButton(
-                    onClick = {
-                        TimePickerDialog(
-                            context,
-                            { _, h, m ->
-                                selectedHour = h
-                                selectedMinute = m
-                            },
-                            selectedHour, selectedMinute, DateFormat.is24HourFormat(context),
-                        ).show()
-                    },
+                TimeInput(
+                    state = timeState,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(Radius.sm),
-                ) {
-                    Icon(
-                        painterResource(R.drawable.ic_schedule_24),
-                        contentDescription = null,
-                        modifier = Modifier.size(IconSize.sm + 2.dp),
-                    )
-                    Spacer(Modifier.width(Spacing.sm))
-                    Text(
-                        formatClock(context, LocalTime.of(selectedHour, selectedMinute)),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
+                    colors = TimePickerDefaults.colors(
+                        timeSelectorSelectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        timeSelectorSelectedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        periodSelectorSelectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        periodSelectorSelectedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                )
 
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Row(
@@ -424,8 +418,8 @@ private fun AddScheduleDialog(
                 onClick = {
                     onConfirm(
                         ScheduleEntry(
-                            hour = selectedHour,
-                            minute = selectedMinute,
+                            hour = timeState.hour,
+                            minute = timeState.minute,
                             action = selectedAction,
                         ),
                     )
