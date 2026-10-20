@@ -355,13 +355,29 @@ class MainActivity : ComponentActivity() {
         // in-app composable detector was removed. Deduped with the service/monitor via tryShakeToggle.
         syncInAppShake()
 
-        // Don't show an app-open ad on the FIRST resume (the cold/intentional open) — that just
-        // blacks out the screen the user is trying to reach. Only show on later returns to the app.
-        if (hasResumedOnce) AppOpenAdManager.showAdIfAvailable(this)
-        hasResumedOnce = true
     }
 
-    private var hasResumedOnce = false
+    /**
+     * Epoch ms of the last time the activity left the screen; 0 until it has (so the cold,
+     * intentional open never gets an ad that blacks out the screen the user is trying to reach).
+     */
+    private var stoppedAtMs = 0L
+
+    override fun onStart() {
+        super.onStart()
+        // App-open ad only on a genuine return after some time away. It used to run on every
+        // onResume, so it fired the moment a system dialog closed (notification / location
+        // permission) and on coming back from granting overlay or battery settings — exactly
+        // when the user is mid-task in the app.
+        if (stoppedAtMs > 0 && System.currentTimeMillis() - stoppedAtMs >= APP_OPEN_AD_MIN_AWAY_MS) {
+            AppOpenAdManager.showAdIfAvailable(this)
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        stoppedAtMs = System.currentTimeMillis()
+    }
 
     override fun onPause() {
         super.onPause()
@@ -413,5 +429,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** Boolean extra: open straight to the Pro upgrade screen. */
         const val EXTRA_SHOW_UPGRADE = "show_upgrade"
+
+        /** Minimum time away before a return counts as a new visit for the app-open ad. */
+        private const val APP_OPEN_AD_MIN_AWAY_MS = 60_000L
     }
 }
