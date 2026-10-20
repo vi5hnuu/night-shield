@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+import androidx.core.content.edit
 import com.android.billingclient.api.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -369,7 +370,7 @@ object BillingManager {
     private fun setProCache(context: Context, isPro: Boolean) {
         val prefs = context.billingPrefs()
         val changed = prefs.getBoolean(KEY_IS_PRO, false) != isPro
-        prefs.edit().putBoolean(KEY_IS_PRO, isPro).apply()
+        prefs.edit { putBoolean(KEY_IS_PRO, isPro) }
         // Widgets render Pro-only controls from this cache, so they must redraw when it flips —
         // otherwise a new buyer's intensity widget stays locked until the next unrelated update.
         if (changed) {
