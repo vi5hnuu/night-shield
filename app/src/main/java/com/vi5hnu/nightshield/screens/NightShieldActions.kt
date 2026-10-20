@@ -24,4 +24,6 @@ data class NightShieldActions(
     val onEnableAutoSchedule: () -> Unit = {},
     val onDisableAutoSchedule: () -> Unit = {},
     val onRefreshLocation: () -> Unit = {},
+    /** Asks for the Android 13+ notification permission when a feature that posts one is enabled. */
+    val ensureNotificationPermission: () -> Unit = {},
 )

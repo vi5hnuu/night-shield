@@ -119,13 +119,15 @@ fun ScheduleScreen(
             SettingRow(
                 icon = R.drawable.ic_visibility_24,
                 title = "20-20-20 eye breaks",
-                subtitle = "Every 20 minutes, a reminder to look 20 feet away for 20 seconds",
+                subtitle = "While the filter is on, a reminder every 20 minutes to look 20 feet away for 20 seconds",
                 trailing = {
                     Switch(
                         checked = eyeBreak,
                         onCheckedChange = {
                             NightShieldManager.setEyeBreakEnabled(it)
                             OverlayHelpers.saveEyeBreakEnabled(context, it)
+                            // Reminders are notifications — useless without the permission.
+                            if (it) actions.ensureNotificationPermission()
                         },
                     )
                 },

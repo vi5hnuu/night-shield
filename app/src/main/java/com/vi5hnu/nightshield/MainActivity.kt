@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
@@ -102,6 +103,25 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this, "Auto schedule on · $city", Toast.LENGTH_SHORT).show()
             } else Toast.makeText(this, "Couldn't get location. Try again outdoors.", Toast.LENGTH_LONG).show()
         }
+    }
+
+    // ── Notifications (Android 13+) ───────────────────────────────────────────
+    // The permission was never declared or requested, so on API 33+ the filter's notification
+    // (with the Pro ±10% controls), eye-break reminders and the weekly report were all invisible.
+    private val requestNotificationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* Nothing to do either way: features degrade to silent if denied. */ }
+
+    /**
+     * Asks once per contextual trigger. Android itself stops showing the dialog after the user
+     * denies twice, so calling this from several places cannot turn into nagging.
+     */
+    private fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     private fun hasLocationPermission() = ContextCompat.checkSelfPermission(
@@ -239,6 +259,7 @@ class MainActivity : ComponentActivity() {
                             onEnableAutoSchedule = { enableAutoSchedule() },
                             onDisableAutoSchedule = { disableAutoSchedule() },
                             onRefreshLocation = { refreshLocation() },
+                            ensureNotificationPermission = { ensureNotificationPermission() },
                         )
                     }
 
@@ -259,6 +280,8 @@ class MainActivity : ComponentActivity() {
         // The service flips the durable flag + widget; optimistically mirror the flow for
         // instant button feedback. The service confirms (or self-corrects if it can't start).
         if (NightShieldController.activate(this)) NightShieldManager.setFilterActive(true)
+        // The filter's notification carries the off switch (and Pro intensity controls).
+        ensureNotificationPermission()
     }
 
     private fun stopOverlays() {
