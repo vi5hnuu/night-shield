@@ -38,6 +38,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.vi5hnu.nightshield.BuildConfig
 import com.vi5hnu.nightshield.NightShieldManager
+import com.vi5hnu.nightshield.OverlayHelpers
+import com.vi5hnu.nightshield.NightShieldWidgetProvider
 import com.vi5hnu.nightshield.R
 import com.vi5hnu.nightshield.ReviewPrompter
 import com.vi5hnu.nightshield.screens.NightShieldActions
@@ -61,6 +63,7 @@ fun SettingsScreen(
     actions: NightShieldActions,
     onShowUpgrade: () -> Unit,
 ) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -100,7 +103,13 @@ fun SettingsScreen(
                     },
                     enabled = isPro,
                     onClick = if (isPro) {
-                        { NightShieldManager.setWidgetStyle(style) }
+                        {
+                            // Saved and redrawn now: the widget reads the stored style, which used
+                            // to change only on onPause, so the home screen kept the old layout.
+                            NightShieldManager.setWidgetStyle(style)
+                            OverlayHelpers.saveWidgetStyle(context, style)
+                            NightShieldWidgetProvider.updateWidget(context)
+                        }
                     } else {
                         onShowUpgrade
                     },
@@ -167,7 +176,6 @@ fun SettingsScreen(
         SettingsGroup {
             // Opens the store listing directly: the in-app review card is subject to a Play quota
             // and may show nothing, which would make a button look broken.
-            val context = LocalContext.current
             SettingRow(
                 icon = R.drawable.ic_star_24,
                 title = "Rate Night Shield",
