@@ -1,6 +1,7 @@
 package com.vi5hnu.nightshield.screens
 
 import androidx.compose.runtime.Immutable
+import com.vi5hnu.nightshield.ReviewPrompter
 
 /**
  * Everything the UI can ask the host activity to do.
@@ -26,4 +27,6 @@ data class NightShieldActions(
     val onRefreshLocation: () -> Unit = {},
     /** Asks for the Android 13+ notification permission when a feature that posts one is enabled. */
     val ensureNotificationPermission: () -> Unit = {},
+    /** Reports a value moment; the host may then show the Play review card. */
+    val onReviewMoment: (ReviewPrompter.Moment) -> Unit = {},
 )

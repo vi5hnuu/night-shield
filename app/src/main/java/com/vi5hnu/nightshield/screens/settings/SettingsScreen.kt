@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import com.vi5hnu.nightshield.BuildConfig
 import com.vi5hnu.nightshield.NightShieldManager
 import com.vi5hnu.nightshield.R
+import com.vi5hnu.nightshield.ReviewPrompter
 import com.vi5hnu.nightshield.screens.NightShieldActions
 import com.vi5hnu.nightshield.ui.components.ProBadge
 import com.vi5hnu.nightshield.ui.components.SectionHeader
@@ -163,6 +165,24 @@ fun SettingsScreen(
         // ── About ─────────────────────────────────────────────────────────────
         SectionHeader("About")
         SettingsGroup {
+            // Opens the store listing directly: the in-app review card is subject to a Play quota
+            // and may show nothing, which would make a button look broken.
+            val context = LocalContext.current
+            SettingRow(
+                icon = R.drawable.ic_star_24,
+                title = "Rate Night Shield",
+                subtitle = "A review helps others find the app",
+                onClick = { ReviewPrompter.openStoreListing(context) },
+                trailing = {
+                    Icon(
+                        painterResource(R.drawable.ic_chevron_right_24),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(IconSize.md),
+                    )
+                },
+            )
+            SettingsDivider()
             SettingRow(
                 icon = R.drawable.ic_shield_24,
                 title = stringResource(R.string.app_name),

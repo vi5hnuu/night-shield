@@ -51,6 +51,7 @@ import com.vi5hnu.nightshield.FreeTier
 import com.vi5hnu.nightshield.NightShieldManager
 import com.vi5hnu.nightshield.OverlayHelpers
 import com.vi5hnu.nightshield.R
+import com.vi5hnu.nightshield.ReviewPrompter
 import com.vi5hnu.nightshield.ScheduleAction
 import com.vi5hnu.nightshield.ScheduleEntry
 import com.vi5hnu.nightshield.SunTimes
@@ -98,7 +99,11 @@ fun ScheduleScreen(
         Spacer(Modifier.height(Spacing.sm))
 
         SectionHeader(stringResource(R.string.schedule_title))
-        SchedulesGroup(isPro = isPro, onShowUpgrade = onShowUpgrade)
+        SchedulesGroup(
+            isPro = isPro,
+            onShowUpgrade = onShowUpgrade,
+            onScheduleAdded = { actions.onReviewMoment(ReviewPrompter.Moment.SCHEDULE_ADDED) },
+        )
 
         Spacer(Modifier.height(Spacing.xxl))
 
@@ -164,7 +169,11 @@ fun ScheduleScreen(
 // ── Fixed schedules ───────────────────────────────────────────────────────────
 
 @Composable
-private fun SchedulesGroup(isPro: Boolean, onShowUpgrade: () -> Unit) {
+private fun SchedulesGroup(
+    isPro: Boolean,
+    onShowUpgrade: () -> Unit,
+    onScheduleAdded: () -> Unit,
+) {
     val context = LocalContext.current
     val schedules by NightShieldManager.schedules.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
@@ -248,6 +257,7 @@ private fun SchedulesGroup(isPro: Boolean, onShowUpgrade: () -> Unit) {
                     ).show()
                 } else {
                     commitSchedules { NightShieldManager.addSchedule(entry) }
+                    onScheduleAdded()
                 }
                 showAddDialog = false
             },

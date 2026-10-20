@@ -16,7 +16,6 @@ import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import com.google.android.gms.ads.MobileAds
-import com.google.android.play.core.review.ReviewManagerFactory
 import com.vi5hnu.nightshield.screens.NightShieldActions
 import com.vi5hnu.nightshield.screens.NightShieldApp
 import com.vi5hnu.nightshield.screens.OnboardingScreen
@@ -206,18 +205,14 @@ class MainActivity : ComponentActivity() {
             val appTheme by NightShieldManager.appTheme.collectAsState()
             val isPro    by ProGate.isPro.collectAsState()
 
-            // In-app review: request after 7 days + ≥20 min total filter time
-            LaunchedEffect(Unit) {
-                val days  = OverlayHelpers.daysSinceFirstLaunch(applicationContext)
-                val mins  = UsageTracker.weeklyTotalMinutes(applicationContext)
-                val shown = prefs.getBoolean("review_requested", false)
-                if (!shown && days >= 7 && mins >= 20) {
-                    val manager = ReviewManagerFactory.create(this@MainActivity)
-                    manager.requestReviewFlow().addOnSuccessListener { info ->
-                        manager.launchReviewFlow(this@MainActivity, info)
-                        prefs.edit { putBoolean("review_requested", true) }
-                    }
+            // Review breakpoint: a completed purchase (isPro flipping on while the UI is up).
+            // The other value moments are reported through NightShieldActions.onReviewMoment.
+            var wasPro by remember { mutableStateOf(isPro) }
+            LaunchedEffect(isPro) {
+                if (isPro && !wasPro) {
+                    ReviewPrompter.onMoment(this@MainActivity, ReviewPrompter.Moment.PURCHASED)
                 }
+                wasPro = isPro
             }
 
             NightShieldTheme(theme = appTheme) {
@@ -267,6 +262,7 @@ class MainActivity : ComponentActivity() {
                             onDisableAutoSchedule = { disableAutoSchedule() },
                             onRefreshLocation = { refreshLocation() },
                             ensureNotificationPermission = { ensureNotificationPermission() },
+                            onReviewMoment = { ReviewPrompter.onMoment(this@MainActivity, it) },
                         )
                     }
 
@@ -300,9 +296,11 @@ class MainActivity : ComponentActivity() {
     private fun launchOverlays() {
         // The service flips the durable flag + widget; optimistically mirror the flow for
         // instant button feedback. The service confirms (or self-corrects if it can't start).
-        if (NightShieldController.activate(this)) NightShieldManager.setFilterActive(true)
+        if (!NightShieldController.activate(this)) return
+        NightShieldManager.setFilterActive(true)
         // The filter's notification carries the off switch (and Pro intensity controls).
         ensureNotificationPermission()
+        ReviewPrompter.onMoment(this, ReviewPrompter.Moment.FILTER_ON)
     }
 
     private fun stopOverlays() {
