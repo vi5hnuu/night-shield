@@ -382,6 +382,12 @@ object OverlayHelpers {
             AutoScheduleHelper.reschedule(context)
         }
 
+        // 3d. Follow system dark mode → off (Pro-only feature)
+        if (loadDarkModeSync(context)) {
+            saveDarkModeSync(context, false)
+            NightShieldManager.setDarkModeAutoSync(false)
+        }
+
         // 4. Schedules → keep the free-tier allowance
         val schedules = loadSchedules(context)
         if (schedules.size > FreeTier.MAX_SCHEDULES) {

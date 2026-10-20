@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -79,6 +80,17 @@ class ShakeMonitorService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /**
+     * PRO — follow system dark mode. This monitor is the one component alive in the background
+     * while the filter is off, so it is where a live night-mode switch can be observed. Starting
+     * the filter from here is allowed for the same reason the shake path is: this is a foreground
+     * service. NightShieldService stops this monitor once it is up.
+     */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        DarkModeSync.maybeActivate(applicationContext, newConfig)
+    }
 
     private fun bootstrapIfNeeded() {
         BillingManager.init(applicationContext)

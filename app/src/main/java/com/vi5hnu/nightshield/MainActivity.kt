@@ -314,15 +314,9 @@ class MainActivity : ComponentActivity() {
         val running = active && hasOverlayPermission.value
         NightShieldManager.setFilterActive(running)
 
-        // Dark mode auto-sync: auto-enable filter when system switches to dark mode
-        if (NightShieldManager.darkModeAutoSync.value &&
-            !running &&
-            hasOverlayPermission.value
-        ) {
-            val nightFlags = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
-            if (nightFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES) {
-                launchOverlays()
-            }
+        // PRO — follow system dark mode.
+        if (!running && DarkModeSync.maybeActivate(this, resources.configuration)) {
+            NightShieldManager.setFilterActive(true)
         }
 
         // Re-verify entitlement with Play on every foreground. Without this, both Pro status and
