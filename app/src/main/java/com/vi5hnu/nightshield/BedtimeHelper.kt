@@ -3,7 +3,7 @@ package com.vi5hnu.nightshield
 import android.content.Context
 
 /**
- * One-tap "Bedtime" routine: applies a warm, strong, dimmed filter and a 30-minute sleep timer,
+ * PRO — one-tap "Bedtime" routine: applies a warm, strong, dimmed filter and a 30-minute sleep timer,
  * then activates the filter. Bundles existing settings into a single relaxing wind-down action.
  */
 object BedtimeHelper {
@@ -13,6 +13,7 @@ object BedtimeHelper {
     private const val DIM = 0.30f
 
     fun apply(context: Context) {
+        if (!ProGate.isPro.value) return
         NightShieldManager.applyTemperaturePreset(NightShieldManager.TemperaturePreset.WARM)
         NightShieldManager.setFilterIntensity(INTENSITY)
         NightShieldManager.setDimLevel(DIM)

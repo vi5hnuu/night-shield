@@ -125,6 +125,8 @@ fun FilterScreen(
             hasOverlayPermission = hasOverlayPermission,
             areServicesActive = areServicesActive,
             streakDays = streakDays,
+            isPro = isPro,
+            onShowUpgrade = onShowUpgrade,
             onPermissionRequest = actions.onPermissionRequest,
             onActivate = actions.launchOverlays,
             onStop = actions.stopOverlays,
@@ -303,6 +305,8 @@ private fun FilterHero(
     hasOverlayPermission: Boolean,
     areServicesActive: Boolean,
     streakDays: Int,
+    isPro: Boolean,
+    onShowUpgrade: () -> Unit,
     onPermissionRequest: () -> Unit,
     onActivate: () -> Unit,
     onStop: () -> Unit,
@@ -511,13 +515,15 @@ private fun FilterHero(
                     )
                 }
 
-                // One-tap bedtime routine — warm colour, dimmed, 30-minute sleep timer, then on.
+                // PRO — one-tap bedtime routine: warm colour, dimmed, 30-minute sleep timer, then on.
+                // Left visible for free users (with a lock) because it is the most tangible upsell
+                // on the screen; tapping it opens the paywall.
                 if (hasOverlayPermission && !areServicesActive) {
                     Spacer(Modifier.height(Spacing.md))
                     OutlinedButton(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            BedtimeHelper.apply(context)
+                            if (isPro) BedtimeHelper.apply(context) else onShowUpgrade()
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -531,6 +537,14 @@ private fun FilterHero(
                         )
                         Spacer(Modifier.size(Spacing.sm))
                         Text("Bedtime — warm, dim, 30 min", style = MaterialTheme.typography.labelLarge)
+                        if (!isPro) {
+                            Spacer(Modifier.size(Spacing.sm))
+                            Icon(
+                                painter = painterResource(R.drawable.ic_lock_24),
+                                contentDescription = "Requires Pro",
+                                modifier = Modifier.size(IconSize.sm),
+                            )
+                        }
                     }
                 }
 
