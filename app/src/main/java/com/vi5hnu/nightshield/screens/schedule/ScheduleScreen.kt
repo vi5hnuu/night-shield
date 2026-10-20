@@ -2,6 +2,7 @@ package com.vi5hnu.nightshield.screens.schedule
 
 import android.app.TimePickerDialog
 import android.content.Context
+import android.text.format.DateFormat
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -66,6 +67,7 @@ import com.vi5hnu.nightshield.ui.theme.IconSize
 import com.vi5hnu.nightshield.ui.theme.Radius
 import com.vi5hnu.nightshield.ui.theme.Spacing
 import java.time.Instant
+import java.time.LocalTime
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -285,7 +287,7 @@ private fun ScheduleRow(
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = entry.timeString,
+                text = formatClock(LocalContext.current, LocalTime.of(entry.hour, entry.minute)),
                 style = MaterialTheme.typography.titleMedium,
                 color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
                 else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
@@ -337,7 +339,7 @@ private fun AddScheduleDialog(
                                 selectedHour = h
                                 selectedMinute = m
                             },
-                            selectedHour, selectedMinute, true,
+                            selectedHour, selectedMinute, DateFormat.is24HourFormat(context),
                         ).show()
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -350,7 +352,7 @@ private fun AddScheduleDialog(
                     )
                     Spacer(Modifier.width(Spacing.sm))
                     Text(
-                        "%02d:%02d".format(selectedHour, selectedMinute),
+                        formatClock(context, LocalTime.of(selectedHour, selectedMinute)),
                         style = MaterialTheme.typography.titleMedium,
                     )
                 }
@@ -474,9 +476,8 @@ private fun AutoScheduleGroup(
                 location?.let { SunTimes.compute(it.lat, it.lon, LocalDate.now()) }
             }
             val zone = ZoneId.systemDefault()
-            val formatter = remember { DateTimeFormatter.ofPattern("HH:mm") }
             fun format(ms: Long) =
-                Instant.ofEpochMilli(ms).atZone(zone).toLocalTime().format(formatter)
+                formatClock(context, Instant.ofEpochMilli(ms).atZone(zone).toLocalTime())
 
             val sunrise = times?.let { format(it.first) } ?: "--:--"
             val sunset = times?.let { format(it.second) } ?: "--:--"
@@ -546,3 +547,9 @@ private fun TimeHint(icon: Int, label: String) {
         )
     }
 }
+
+/** Formats a clock time in the user's 12/24-hour preference (times were always shown as 24h). */
+private fun formatClock(context: Context, time: LocalTime): String =
+    time.format(
+        DateTimeFormatter.ofPattern(if (DateFormat.is24HourFormat(context)) "HH:mm" else "h:mm a"),
+    )

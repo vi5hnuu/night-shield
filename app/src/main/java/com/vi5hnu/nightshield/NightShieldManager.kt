@@ -17,9 +17,7 @@ data class ScheduleEntry(
     val enabled: Boolean = true,
     /** PRO — for ON action: set filter to this intensity when schedule fires. */
     val targetIntensity: Float? = null,
-) {
-    val timeString: String get() = "%02d:%02d".format(hour, minute)
-}
+)
 
 // ── Per-app filter model ──────────────────────────────────────────────────────
 
