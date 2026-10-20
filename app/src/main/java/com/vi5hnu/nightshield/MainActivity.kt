@@ -115,7 +115,12 @@ class MainActivity : ComponentActivity() {
     // (with the Pro ±10% controls), eye-break reminders and the weekly report were all invisible.
     private val requestNotificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { /* Nothing to do either way: features degrade to silent if denied. */ }
+    ) { granted ->
+        // The filter's foreground notification was posted (and dropped) before the user answered.
+        // Re-delivering the start command makes the running service call startForeground again,
+        // which re-posts it; the service treats a repeat start as a no-op otherwise.
+        if (granted && NightShieldService.isRunning) startOverlayService()
+    }
 
     /**
      * Asks once per contextual trigger. Android itself stops showing the dialog after the user
