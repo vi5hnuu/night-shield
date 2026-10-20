@@ -56,6 +56,12 @@ object BillingManager {
     private var connecting = false
 
     /**
+     * True from the Unlock tap until Play reports back. A double tap used to start two flows; the
+     * second failed and showed "Purchase couldn't be completed" over a purchase that was working.
+     */
+    private var purchaseInFlight = false
+
+    /**
      * Play's localised price for [PRODUCT_ID] (e.g. "₹50.00", "$0.99), or null until Play answers.
      *
      * The paywall used to print a hardcoded price, which is wrong in every other currency and
@@ -120,6 +126,7 @@ object BillingManager {
      * Must be called from a live, UI-attached [Activity].
      */
     fun purchase(activity: Activity) {
+        if (purchaseInFlight) return
         val client = billingClient
         if (client == null || !client.isReady) {
             // Previously a silent return: the Unlock button simply did nothing and the user had no
@@ -143,7 +150,8 @@ object BillingManager {
                 return@queryProductDetailsAsync
             }
 
-            client.launchBillingFlow(
+            purchaseInFlight = true
+            val launch = client.launchBillingFlow(
                 activity,
                 BillingFlowParams.newBuilder()
                     .setProductDetailsParamsList(
@@ -155,6 +163,8 @@ object BillingManager {
                     )
                     .build()
             )
+            // The sheet never opened, so no onPurchasesUpdated will arrive to clear the flag.
+            if (launch.responseCode != BillingClient.BillingResponseCode.OK) purchaseInFlight = false
         }
     }
 
@@ -185,6 +195,7 @@ object BillingManager {
      * indistinguishable from a working app that ignored the tap.
      */
     private fun onPurchasesUpdated(result: BillingResult, purchases: List<Purchase>?) {
+        purchaseInFlight = false
         val context = appContext ?: return
         when (result.responseCode) {
             BillingClient.BillingResponseCode.OK ->
@@ -308,6 +319,11 @@ object BillingManager {
                 ProGate.revoke()
                 setProCache(context, false)
                 // Reset Pro-only settings so they don't persist without entitlement.
+                // A slow payment (UPI, cash) that hasn't cleared is not "no purchase" — telling
+                // the user nothing was found would invite a second, duplicate payment attempt.
+                val isPending = purchases.any {
+                    PRODUCT_ID in it.products && it.purchaseState == Purchase.PurchaseState.PENDING
+                }
                 if (wasPro) {
                     OverlayHelpers.enforceFreeLimits(context)
                     toast(
@@ -315,7 +331,11 @@ object BillingManager {
                         "Pro is no longer active on this Google account. Pro features have been turned off.",
                     )
                 } else if (announceResult) {
-                    toast(context, "No previous purchase found on this Google account.")
+                    toast(
+                        context,
+                        if (isPending) "Your payment is still pending. Pro unlocks as soon as Google Play confirms it."
+                        else "No previous purchase found on this Google account.",
+                    )
                 }
             }
         }
