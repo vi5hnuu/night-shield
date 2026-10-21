@@ -315,6 +315,7 @@ private fun FilterHero(
     val context = LocalContext.current
     val canvasColor by NightShieldManager.canvasColor.collectAsState()
     val intensity by NightShieldManager.filterIntensity.collectAsState()
+    val activePreset by NightShieldManager.activePreset.collectAsState()
 
     val transition = rememberInfiniteTransition(label = "hero")
     val glowAlpha by transition.animateFloat(
@@ -353,9 +354,10 @@ private fun FilterHero(
                         ),
                     )
                 } else {
+                    // A faint top-down lift so the off state has depth instead of a flat slab.
                     Brush.verticalGradient(
                         listOf(
-                            MaterialTheme.colorScheme.surfaceContainer,
+                            MaterialTheme.colorScheme.surfaceContainerHigh,
                             MaterialTheme.colorScheme.surfaceContainer,
                         ),
                     )
@@ -424,7 +426,9 @@ private fun FilterHero(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
 
-                if (areServicesActive) {
+                // Current colour and strength in both states, so the hero previews what
+                // "Activate" will apply instead of leaving the off state empty.
+                if (hasOverlayPermission) {
                     Spacer(Modifier.height(Spacing.xs))
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -436,7 +440,7 @@ private fun FilterHero(
                                 .background(canvasColor, CircleShape),
                         )
                         Text(
-                            text = "${(intensity * 100).toInt()}% intensity",
+                            text = "${activePreset?.label ?: "Custom"} · ${(intensity * 100).toInt()}% intensity",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -445,10 +449,12 @@ private fun FilterHero(
 
                 if (streakDays >= 1) {
                     Spacer(Modifier.height(Spacing.md))
+                    // Neutral chip with an amber icon: the filled amber chip clashed with the
+                    // battery notice and read as a second warning.
                     Surface(
                         shape = RoundedCornerShape(Radius.sm),
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     ) {
                         Row(
                             modifier = Modifier.padding(
@@ -461,6 +467,7 @@ private fun FilterHero(
                             Icon(
                                 painter = painterResource(R.drawable.ic_bolt_24),
                                 contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary,
                                 modifier = Modifier.size(IconSize.sm),
                             )
                             Text(
@@ -587,6 +594,8 @@ private fun BatteryOptBanner(lifecycleKey: Any) {
                 title = stringResource(R.string.battery_opt_title),
                 text = stringResource(R.string.battery_opt_body),
                 icon = R.drawable.ic_bolt_24,
+                // Amber marks it as a warning without the filled slab it used to be.
+                accent = MaterialTheme.colorScheme.secondary,
                 actions = listOf(
                     InfoBannerAction(stringResource(R.string.battery_opt_dismiss)) {
                         dismissed = true

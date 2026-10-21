@@ -143,8 +143,7 @@ fun AppsScreen(
                 title = "Accessibility service is off",
                 text = "Night Shield needs it to see which app is in the foreground before per-app rules can apply.",
                 icon = R.drawable.ic_apps_24,
-                container = MaterialTheme.colorScheme.tertiaryContainer,
-                content = MaterialTheme.colorScheme.onTertiaryContainer,
+                accent = MaterialTheme.colorScheme.tertiary,
                 actions = listOf(
                     InfoBannerAction("Enable", emphasised = true) { showAccessibilityDialog = true },
                 ),
