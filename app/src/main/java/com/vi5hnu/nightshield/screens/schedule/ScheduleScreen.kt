@@ -148,7 +148,7 @@ fun ScheduleScreen(
             SettingRow(
                 icon = R.drawable.ic_dark_mode_24,
                 title = "Follow system dark mode",
-                subtitle = "Turn the filter on whenever the system is in dark mode",
+                subtitle = "Turn the filter on when the system switches to dark mode",
                 enabled = isPro,
                 onClick = if (isPro) null else onShowUpgrade,
                 trailing = {

@@ -420,17 +420,24 @@ object OverlayHelpers {
 
 object AlarmHelpers {
     private const val RC_BASE = 2000
+    private const val PREFS = "alarm_prefs"
     /**
-     * Request-code slots cleared on every re-arm. Cancelling only "current size + 10" left alarms
-     * behind when the list shrank by more than that (e.g. Pro revoked with many schedules).
+     * How many request-code slots are currently armed. Re-arming cancels exactly these, so a list
+     * that shrank (deletions, Pro revoked) never leaves an orphan alarm behind — the old
+     * "current size + 10" guess did — without cancelling a fixed large range on every onPause.
      */
-    private const val MAX_SLOTS = 64
+    private const val KEY_ARMED_SLOTS = "armed_slots"
+    /** Covers alarms armed by builds that predate [KEY_ARMED_SLOTS]. */
+    private const val LEGACY_SLOTS = 16
 
     fun scheduleAll(context: Context, schedules: List<ScheduleEntry>) {
-        cancelAll(context, maxOf(MAX_SLOTS, schedules.size))
-        schedules.filter { it.enabled }.forEachIndexed { index, entry ->
+        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        cancelAll(context, prefs.getInt(KEY_ARMED_SLOTS, LEGACY_SLOTS))
+        val enabled = schedules.filter { it.enabled }
+        enabled.forEachIndexed { index, entry ->
             scheduleEntry(context, entry, RC_BASE + index)
         }
+        prefs.edit { putInt(KEY_ARMED_SLOTS, enabled.size) }
     }
 
     /**
