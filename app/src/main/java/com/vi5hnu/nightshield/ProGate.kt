@@ -6,13 +6,36 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Single source of truth for pro entitlement.
- * [BillingManager] calls [grant] after a successful purchase or verified restore.
- * All UI reads [isPro] to gate premium features.
+ *
+ * Two independent sources feed it:
+ *  - [BillingManager] calls [grant] / [revoke] for the paid one-time purchase.
+ *  - [ProTrial] calls [setTrialActive] for the 24-hour trial earned by watching a rewarded ad.
+ *
+ * [isPro] — "Pro features are unlocked" (paid OR trial). Every feature gate reads this.
+ * [isPaid] — "the user bought Pro". Ads, the Pro badge and the paywall read this: a trial unlocks
+ * features but keeps ads, so going ad-free stays the reason to buy.
+ *
+ * Kept separate so a Play re-check that finds no purchase cannot cancel an earned trial, and a
+ * trial ending cannot revoke a purchase.
  */
 object ProGate {
+    private var paid = false
+    private var trial = false
+
+    private val _isPaid = MutableStateFlow(false)
+    val isPaid: StateFlow<Boolean> = _isPaid.asStateFlow()
+
     private val _isPro = MutableStateFlow(false)
     val isPro: StateFlow<Boolean> = _isPro.asStateFlow()
 
-    fun grant() { _isPro.value = true }
-    fun revoke() { _isPro.value = false }
+    // Synchronized: billing callbacks, receivers and the UI can update it from different threads.
+    @Synchronized fun grant() { paid = true; publish() }
+    @Synchronized fun revoke() { paid = false; publish() }
+
+    @Synchronized fun setTrialActive(active: Boolean) { trial = active; publish() }
+
+    private fun publish() {
+        _isPaid.value = paid
+        _isPro.value = paid || trial
+    }
 }

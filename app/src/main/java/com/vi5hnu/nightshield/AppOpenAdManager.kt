@@ -3,12 +3,10 @@ package com.vi5hnu.nightshield
 import android.app.Activity
 import android.content.Context
 import com.google.android.gms.ads.AdError
-import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.appopen.AppOpenAd
 
-private const val APP_OPEN_AD_UNIT_ID = "ca-app-pub-4715945578201106/6261357521"
 private const val SHOW_COOLDOWN_MS = 60 * 60 * 1000L  // 60 minutes between shows
 
 object AppOpenAdManager {
@@ -25,8 +23,8 @@ object AppOpenAdManager {
         isLoadingAd = true
         AppOpenAd.load(
             context,
-            APP_OPEN_AD_UNIT_ID,
-            AdRequest.Builder().build(),
+            AdConfig.appOpenUnitId,
+            AdConfig.request(),
             object : AppOpenAd.AppOpenAdLoadCallback() {
                 override fun onAdLoaded(ad: AppOpenAd) {
                     appOpenAd = ad
@@ -42,7 +40,7 @@ object AppOpenAdManager {
 
     /** Show the ad if available, then reload for next time. Pro users never see this ad. */
     fun showAdIfAvailable(activity: Activity, onComplete: () -> Unit = {}) {
-        if (ProGate.isPro.value) { onComplete(); return }
+        if (ProGate.isPaid.value) { onComplete(); return }
         if (isShowingAd) { onComplete(); return }
         if (!isAdAvailable()) { onComplete(); loadAd(activity); return }
         if (System.currentTimeMillis() - lastShownTime < SHOW_COOLDOWN_MS) { onComplete(); return }

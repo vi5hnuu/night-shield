@@ -326,7 +326,9 @@ object BillingManager {
                     PRODUCT_ID in it.products && it.purchaseState == Purchase.PurchaseState.PENDING
                 }
                 if (wasPro) {
-                    OverlayHelpers.enforceFreeLimits(context)
+                    // A running ad-earned trial keeps Pro features until it ends (ProTrial
+                    // applies the limits then), so only enforce when nothing else unlocks them.
+                    if (!ProGate.isPro.value) OverlayHelpers.enforceFreeLimits(context)
                     toast(
                         context,
                         "Pro is no longer active on this Google account. Pro features have been turned off.",

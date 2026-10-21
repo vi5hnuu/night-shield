@@ -449,6 +449,8 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         isRunning = false
         unregisterLightSensor()
         UsageTracker.recordStop(applicationContext)
+        // Every session end counts toward the next interstitial, however the filter was stopped.
+        InterstitialAdManager.recordStop(applicationContext)
         shakeHelper?.stop()
         shakeHelper = null
         sleepTimerJob?.cancel()

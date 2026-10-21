@@ -30,22 +30,31 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.vi5hnu.nightshield.BillingManager
 import com.vi5hnu.nightshield.FreeTier
+import com.vi5hnu.nightshield.ProGate
+import com.vi5hnu.nightshield.ProTrial
 import com.vi5hnu.nightshield.R
+import com.vi5hnu.nightshield.RewardedAdManager
 import com.vi5hnu.nightshield.ui.components.readableWidth
 import com.vi5hnu.nightshield.ui.theme.IconSize
 import com.vi5hnu.nightshield.ui.theme.Radius
 import com.vi5hnu.nightshield.ui.theme.Spacing
+import kotlinx.coroutines.delay
 
 /**
  * Shown while Play has not returned a localised price yet.
@@ -114,12 +123,16 @@ private val COMPARE_ROWS = listOf(
  */
 @Composable
 fun UpgradeScreen(
+    /** Bought Pro. A rewarded-trial user is not paid and still sees the offer. */
     isPro: Boolean,
     onPurchase: () -> Unit,
     onRestorePurchase: () -> Unit,
+    onWatchAdForTrial: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val storePrice by BillingManager.formattedPrice.collectAsState()
+    val trialRemainingMs = rememberTrialRemainingMs()
+    val adAvailability by RewardedAdManager.availability.collectAsState()
 
     Column(
         modifier = Modifier
@@ -204,6 +217,11 @@ fun UpgradeScreen(
                             style = MaterialTheme.typography.labelLarge,
                         )
                     }
+                    TrialOffer(
+                        remainingMs = trialRemainingMs,
+                        adAvailability = adAvailability,
+                        onWatchAd = onWatchAdForTrial,
+                    )
                     TextButton(onClick = onRestorePurchase) {
                         Text(
                             "Restore purchase",
@@ -413,5 +431,58 @@ private fun PriceCard(price: String?) {
                 textAlign = TextAlign.Center,
             )
         }
+    }
+}
+
+/** Remaining rewarded-trial time, re-read every minute while the paywall is open. */
+@Composable
+private fun rememberTrialRemainingMs(): Long {
+    val context = LocalContext.current
+    val isPro by ProGate.isPro.collectAsState()
+    var remaining by remember { mutableLongStateOf(ProTrial.remainingMs(context)) }
+    LaunchedEffect(isPro) {
+        while (true) {
+            remaining = ProTrial.remainingMs(context)
+            delay(60_000L)
+        }
+    }
+    return remaining
+}
+
+/**
+ * The rewarded-ad trial offer under the buy button, or the time left on a running trial. Sits
+ * below "Unlock Pro" on purpose: the purchase stays the primary action, the trial the fallback.
+ */
+@Composable
+private fun TrialOffer(
+    remainingMs: Long,
+    adAvailability: RewardedAdManager.Availability,
+    onWatchAd: () -> Unit,
+) {
+    Spacer(Modifier.height(Spacing.sm))
+    if (remainingMs > 0) {
+        val hours = remainingMs / 3_600_000L
+        val minutes = (remainingMs / 60_000L) % 60
+        Text(
+            text = "Pro trial active · ${if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"} left",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.sm),
+        )
+        return
+    }
+    OutlinedButton(
+        onClick = onWatchAd,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp),
+        shape = RoundedCornerShape(Radius.md),
+    ) {
+        Text(
+            text = if (adAvailability == RewardedAdManager.Availability.LOADING) "Loading ad…"
+            else "Watch an ad — try Pro free for 24 hours",
+            style = MaterialTheme.typography.labelLarge,
+        )
     }
 }
