@@ -28,12 +28,12 @@ object ProGate {
     private val _isPro = MutableStateFlow(false)
     val isPro: StateFlow<Boolean> = _isPro.asStateFlow()
 
-    fun grant() { paid = true; publish() }
-    fun revoke() { paid = false; publish() }
+    // Synchronized: billing callbacks, receivers and the UI can update it from different threads.
+    @Synchronized fun grant() { paid = true; publish() }
+    @Synchronized fun revoke() { paid = false; publish() }
 
-    fun setTrialActive(active: Boolean) { trial = active; publish() }
+    @Synchronized fun setTrialActive(active: Boolean) { trial = active; publish() }
 
-    @Synchronized
     private fun publish() {
         _isPaid.value = paid
         _isPro.value = paid || trial

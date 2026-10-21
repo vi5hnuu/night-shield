@@ -78,19 +78,21 @@ object RewardedAdManager {
         val ad = rewardedAd ?: run { loadAd(activity); return ShowResult.NOT_READY }
 
         ad.fullScreenContentCallback = object : FullScreenContentCallback() {
-            override fun onAdDismissedFullScreenContent() = reload(activity)
-            override fun onAdFailedToShowFullScreenContent(e: AdError) = reload(activity)
+            override fun onAdDismissedFullScreenContent() = onClosed(activity)
+            override fun onAdFailedToShowFullScreenContent(e: AdError) = onClosed(activity)
         }
         // A rewarded ad is single-use: drop it now so a second tap can't replay the same one.
         rewardedAd = null
         _availability.value = Availability.UNAVAILABLE
+        FullScreenAds.onShowRequested()
         ad.show(activity) {
             if (ProTrial.start(activity)) onTrialStarted()
         }
         return ShowResult.SHOWN
     }
 
-    private fun reload(context: Context) {
+    private fun onClosed(context: Context) {
+        FullScreenAds.onClosed()
         rewardedAd = null
         // Preload the next one only if it could be used; during a trial it would just expire.
         if (!ProTrial.isActive(context)) loadAd(context)

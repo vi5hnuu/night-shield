@@ -400,7 +400,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        stoppedAtMs = System.currentTimeMillis()
+        // Being covered by our own rewarded/interstitial ad is not "away" — never chain an
+        // app-open ad onto another full-screen ad.
+        stoppedAtMs = if (FullScreenAds.isShowing) 0L else System.currentTimeMillis()
     }
 
     override fun onPause() {

@@ -92,15 +92,18 @@ object InterstitialAdManager {
                 }
             }
             override fun onAdDismissedFullScreenContent() {
+                FullScreenAds.onClosed()
                 interstitialAd = null
                 loadAd(activity)
             }
             override fun onAdFailedToShowFullScreenContent(e: AdError) {
+                FullScreenAds.onClosed()
                 interstitialAd = null
                 loadAd(activity)
             }
         }
         interstitialAd = null
+        FullScreenAds.onShowRequested()
         ad.show(activity)
     }
 
