@@ -68,7 +68,10 @@ class NightShieldAccessibilityService : AccessibilityService() {
             // the baseline when the next app in a configured-app chain doesn't override them.
             // This prevents App A's custom intensity from leaking into App B when App B
             // has no customIntensity of its own.
-            config.customIntensity?.let {
+            // PRO: per-app custom intensity — like colour, ignored without entitlement (it was
+            // still applied after a refund because only the colour was stripped).
+            val effectiveCustomIntensity = if (ProGate.isPro.value) config.customIntensity else null
+            effectiveCustomIntensity?.let {
                 if (savedIntensity == null) savedIntensity = NightShieldManager.filterIntensity.value
                 NightShieldManager.setFilterIntensity(it)
             } ?: savedIntensity?.let { NightShieldManager.setFilterIntensity(it) }

@@ -30,7 +30,12 @@ class OverlayAlarmReceiver : BroadcastReceiver() {
 
             ACTION_STOP -> if (isRunning) NightShieldController.deactivate(context)
 
-            ACTION_SUNRISE -> NightShieldController.activate(context, sunrise = true)
+            // PRO. Without the gate a free user's leftover sunrise schedule (e.g. after a refund)
+            // simply switched the filter ON at wake-up time — the fade itself is Pro-gated in the
+            // service, so it never lifted and stayed on all morning.
+            ACTION_SUNRISE -> if (ProGate.isPro.value) {
+                NightShieldController.activate(context, sunrise = true)
+            }
 
             ACTION_AUTO_RECOMPUTE -> AutoScheduleHelper.reschedule(context)
         }
