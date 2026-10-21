@@ -19,6 +19,9 @@
          are never shown. Requested in context, not at launch. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Rewarded Pro trial: the ad is only offered on a validated connection (see RewardedAdManager) -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <!-- Boot restart -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
@@ -70,6 +73,11 @@
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+
+        <!-- Ends the rewarded Pro trial on time even while the app is closed -->
+        <receiver
+            android:name=".TrialExpiryReceiver"
+            android:exported="false" />
 
         <!-- Alarm receiver for auto-schedule ON/OFF -->
         <receiver

@@ -42,7 +42,7 @@ object AppOpenAdManager {
 
     /** Show the ad if available, then reload for next time. Pro users never see this ad. */
     fun showAdIfAvailable(activity: Activity, onComplete: () -> Unit = {}) {
-        if (ProGate.isPro.value) { onComplete(); return }
+        if (ProGate.isPaid.value) { onComplete(); return }
         if (isShowingAd) { onComplete(); return }
         if (!isAdAvailable()) { onComplete(); loadAd(activity); return }
         if (System.currentTimeMillis() - lastShownTime < SHOW_COOLDOWN_MS) { onComplete(); return }

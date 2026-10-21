@@ -10,4 +10,6 @@
 -->
 <full-backup-content>
     <exclude domain="sharedpref" path="billing_prefs.xml" />
+    <!-- The rewarded Pro trial: restoring it would grant a trial nobody watched an ad for. -->
+    <exclude domain="sharedpref" path="trial_prefs.xml" />
 </full-backup-content>

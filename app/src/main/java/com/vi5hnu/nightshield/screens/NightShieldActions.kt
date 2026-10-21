@@ -29,4 +29,6 @@ data class NightShieldActions(
     val ensureNotificationPermission: () -> Unit = {},
     /** Reports a value moment; the host may then show the Play review card. */
     val onReviewMoment: (ReviewPrompter.Moment) -> Unit = {},
+    /** Shows the rewarded ad that unlocks the 24-hour Pro trial. */
+    val onWatchAdForTrial: () -> Unit = {},
 )

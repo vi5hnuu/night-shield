@@ -11,12 +11,14 @@ import android.app.Application
  * only filled in by MainActivity / the services), which silently dropped Pro behaviour such as the
  * auto sunset/sunrise midnight recompute.
  *
- * Only the cached entitlement is applied here — no billing connection is opened. [BillingManager]
+ * Only the cached entitlement (and the locally stored rewarded trial) is applied here — no billing connection is opened. [BillingManager]
  * still verifies with Play whenever the UI or a service initialises it.
  */
 class NightShieldApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         if (BillingManager.isProCached(this)) ProGate.grant()
+        // Ad-earned trial: restore it, or apply free limits if it ran out while we were dead.
+        ProTrial.reconcile(this)
     }
 }

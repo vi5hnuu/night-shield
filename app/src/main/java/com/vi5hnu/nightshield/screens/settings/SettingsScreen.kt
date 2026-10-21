@@ -60,6 +60,8 @@ import com.vi5hnu.nightshield.ui.theme.paletteFor
 @Composable
 fun SettingsScreen(
     isPro: Boolean,
+    /** Bought Pro; a trial user still sees the upgrade card. */
+    isPaid: Boolean,
     actions: NightShieldActions,
     onShowUpgrade: () -> Unit,
 ) {
@@ -72,7 +74,7 @@ fun SettingsScreen(
     ) {
         Spacer(Modifier.height(Spacing.sm))
 
-        if (!isPro) {
+        if (!isPaid) {
             UpgradeCard(onShowUpgrade = onShowUpgrade)
             Spacer(Modifier.height(Spacing.xxl))
         }

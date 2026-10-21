@@ -146,6 +146,8 @@ class MainActivity : ComponentActivity() {
         MobileAds.initialize(this)
         AppOpenAdManager.loadAd(this)
         InterstitialAdManager.loadAd(this)
+        // Preloaded so "watch an ad for a Pro trial" plays on the first tap.
+        RewardedAdManager.loadAd(this)
 
         // ── First-launch tracking ─────────────────────────────────────────────
         OverlayHelpers.ensureFirstLaunchRecorded(this)
@@ -209,15 +211,17 @@ class MainActivity : ComponentActivity() {
             // Observe theme changes so the whole UI reflects the chosen theme live
             val appTheme by NightShieldManager.appTheme.collectAsState()
             val isPro    by ProGate.isPro.collectAsState()
+            val isPaid   by ProGate.isPaid.collectAsState()
 
-            // Review breakpoint: a completed purchase (isPro flipping on while the UI is up).
+            // Review breakpoint: a completed purchase (isPaid flipping on while the UI is up —
+            // not isPro, which a rewarded trial also turns on).
             // The other value moments are reported through NightShieldActions.onReviewMoment.
-            var wasPro by remember { mutableStateOf(isPro) }
-            LaunchedEffect(isPro) {
-                if (isPro && !wasPro) {
+            var wasPaid by remember { mutableStateOf(isPaid) }
+            LaunchedEffect(isPaid) {
+                if (isPaid && !wasPaid) {
                     ReviewPrompter.onMoment(this@MainActivity, ReviewPrompter.Moment.PURCHASED)
                 }
-                wasPro = isPro
+                wasPaid = isPaid
             }
 
             NightShieldTheme(theme = appTheme) {
@@ -226,10 +230,10 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // Contextual upgrade prompt: show once after 3 days OR 30 min of filter use
-                val triggerUpgrade = remember(isPro) {
+                val triggerUpgrade = remember(isPaid) {
                     val days  = OverlayHelpers.daysSinceFirstLaunch(applicationContext)
                     val mins  = UsageTracker.weeklyTotalMinutes(applicationContext)
-                    !isPro && !OverlayHelpers.isUpgradePromptShown(applicationContext) &&
+                    !isPaid && !OverlayHelpers.isUpgradePromptShown(applicationContext) &&
                         (days >= 3 || mins >= 30)
                 }
 
@@ -268,6 +272,7 @@ class MainActivity : ComponentActivity() {
                             onRefreshLocation = { refreshLocation() },
                             ensureNotificationPermission = { ensureNotificationPermission() },
                             onReviewMoment = { ReviewPrompter.onMoment(this@MainActivity, it) },
+                            onWatchAdForTrial = { watchAdForTrial() },
                         )
                     }
 
@@ -276,6 +281,7 @@ class MainActivity : ComponentActivity() {
                         areServicesActive    = areServicesActive,
                         allowShake           = NightShieldManager.allowShake.collectAsState().value,
                         isPro                = isPro,
+                        isPaid               = isPaid,
                         triggerUpgradePrompt = triggerUpgrade,
                         upgradeRequested     = upgradeRequested.value,
                         onUpgradeRequestHandled = { upgradeRequested.value = false },
@@ -296,6 +302,22 @@ class MainActivity : ComponentActivity() {
             upgradeRequested.value = true
             intent.removeExtra(EXTRA_SHOW_UPGRADE)
         }
+    }
+
+    /** Rewarded ad → 24-hour Pro trial. Each refusal is explained instead of silently ignored. */
+    private fun watchAdForTrial() {
+        val message = when (RewardedAdManager.show(this) {
+            Toast.makeText(this, "Pro unlocked for 24 hours. Enjoy!", Toast.LENGTH_LONG).show()
+        }) {
+            RewardedAdManager.ShowResult.SHOWN, RewardedAdManager.ShowResult.PAID -> null
+            RewardedAdManager.ShowResult.OFFLINE ->
+                "Connect to the internet to watch the ad."
+            RewardedAdManager.ShowResult.NOT_READY ->
+                "The ad is still loading. Please try again in a moment."
+            RewardedAdManager.ShowResult.TRIAL_ALREADY_ACTIVE ->
+                "Your Pro trial is already running."
+        }
+        message?.let { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
     }
 
     private fun launchOverlays() {
@@ -348,6 +370,8 @@ class MainActivity : ComponentActivity() {
         // a user who launched while offline would stay locked out of what they bought, and a
         // refund would go unnoticed for as long as the process lives.
         BillingManager.refresh()
+        // Ends an ad-earned trial that ran out while the app was in the background.
+        ProTrial.reconcile(applicationContext)
 
         // Keep the background shake monitor in sync with the current state.
         NightShieldController.syncShakeMonitor(applicationContext)

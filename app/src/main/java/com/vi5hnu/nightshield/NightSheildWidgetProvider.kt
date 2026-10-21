@@ -50,7 +50,7 @@ class NightShieldWidgetProvider : AppWidgetProvider() {
             // backup, refund handled elsewhere). Uses the cached flag rather than ProGate because a
             // widget update can run in a cold process where the gate has not been populated.
             val style = OverlayHelpers.loadWidgetStyle(context)
-                .gatedBy(BillingManager.isProCached(context))
+                .gatedBy(ProTrial.hasProFeatures(context))
             when (style) {
                 NightShieldManager.WidgetStyle.MINIMAL -> {
                     views.setViewVisibility(R.id.widgetTextStrip, View.GONE)

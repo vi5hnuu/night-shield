@@ -15,8 +15,8 @@ import android.widget.RemoteViews
  * reuses the exported [NightShieldWidgetProvider] toggle signal.
  *
  * PRO — the − / + controls. Free users keep the toggle; the − / + are hidden and the label reads
- * "Pro", opening the paywall. Entitlement is read from the billing cache because widget updates
- * often run in a cold process.
+ * "Pro", opening the paywall. Entitlement is read from the billing cache and the stored rewarded
+ * trial ([ProTrial.hasProFeatures]) because widget updates often run in a cold process.
  */
 class IntensityWidgetProvider : AppWidgetProvider() {
 
@@ -28,7 +28,7 @@ class IntensityWidgetProvider : AppWidgetProvider() {
         fun updateAll(context: Context) {
             val views = RemoteViews(context.packageName, R.layout.intensity_widget_layout)
 
-            val isPro = BillingManager.isProCached(context)
+            val isPro = ProTrial.hasProFeatures(context)
             val pct = (OverlayHelpers.loadFilterSettings(context).second * 100).toInt()
             views.setTextViewText(R.id.intensityValue, if (isPro) "$pct%" else "Pro")
             val stepperVisibility = if (isPro) View.VISIBLE else View.GONE

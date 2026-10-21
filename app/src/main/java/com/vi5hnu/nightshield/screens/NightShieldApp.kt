@@ -7,6 +7,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,6 +39,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -91,7 +93,10 @@ fun NightShieldApp(
     hasOverlayPermission: Boolean,
     areServicesActive: Boolean,
     allowShake: Boolean,
+    /** Pro features unlocked (purchase or rewarded trial) — drives every feature gate. */
     isPro: Boolean,
+    /** Bought Pro — drives ads, the Pro badge and the paywall. */
+    isPaid: Boolean,
     triggerUpgradePrompt: Boolean,
     /** The host was opened to show the paywall (e.g. from a locked widget control). */
     upgradeRequested: Boolean,
@@ -150,9 +155,10 @@ fun NightShieldApp(
         // drives the correct "return to home screen" predictive preview instead of app exit.
         BackHandler { showUpgradeScreen = false }
         UpgradeScreen(
-            isPro = isPro,
+            isPro = isPaid,
             onPurchase = actions.onPurchase,
             onRestorePurchase = actions.onRestorePurchase,
+            onWatchAdForTrial = actions.onWatchAdForTrial,
             onDismiss = { showUpgradeScreen = false },
         )
         return
@@ -184,7 +190,7 @@ fun NightShieldApp(
                 },
                 actions = {
                     // One entry point to the paywall, always in the same place.
-                    if (!isPro) {
+                    if (!isPaid) {
                         ProBadge(onClick = showUpgrade, modifier = Modifier.padding(end = 12.dp))
                     }
                 },
@@ -200,7 +206,7 @@ fun NightShieldApp(
             Column(modifier = if (useRail) Modifier.navigationBarsPadding() else Modifier) {
                 // Banner ad (free users only) sits above the nav bar so it never covers content
                 // or the navigation itself.
-                if (!isPro) BannerAd()
+                if (!isPaid) BannerAd()
                 if (!useRail) NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer,
                 ) {
@@ -301,6 +307,7 @@ fun NightShieldApp(
 
                         NightShieldTab.SETTINGS -> SettingsScreen(
                             isPro = isPro,
+                            isPaid = isPaid,
                             actions = actions,
                             onShowUpgrade = showUpgrade,
                         )
@@ -315,16 +322,29 @@ fun NightShieldApp(
 
 private const val BANNER_AD_UNIT_ID = "ca-app-pub-4715945578201106/5606751408"
 
+/**
+ * Anchored adaptive banner: sized by the SDK to the real width instead of a fixed 320×50, so it
+ * fills phones edge to edge and tablets without empty gutters — adaptive banners also fill and pay
+ * better. Re-created when the width changes (rotation, rail ↔ bar), and destroyed with the view.
+ */
 @Composable
 private fun BannerAd() {
-    AndroidView(
-        modifier = Modifier.fillMaxWidth(),
-        factory = { ctx ->
-            AdView(ctx).apply {
-                setAdSize(AdSize.BANNER)
-                adUnitId = BANNER_AD_UNIT_ID
-                loadAd(AdRequest.Builder().build())
-            }
-        },
-    )
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val widthDp = maxWidth.value.toInt()
+        key(widthDp) {
+            AndroidView(
+                modifier = Modifier.fillMaxWidth(),
+                factory = { ctx ->
+                    AdView(ctx).apply {
+                        setAdSize(
+                            AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(ctx, widthDp),
+                        )
+                        adUnitId = BANNER_AD_UNIT_ID
+                        loadAd(AdRequest.Builder().build())
+                    }
+                },
+                onRelease = { it.destroy() },
+            )
+        }
+    }
 }

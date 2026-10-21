@@ -13,7 +13,7 @@ class IntensityActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         // PRO — both entry points (notification ±10% and the intensity widget's − / +) are Pro.
         // A stale widget or notification left over from a Pro period must not keep working.
-        if (!BillingManager.isProCached(context)) return
+        if (!ProTrial.hasProFeatures(context)) return
 
         // Read the saved value (not the in-memory flow) so this is correct even in a cold process
         // spun up just to handle a widget tap.

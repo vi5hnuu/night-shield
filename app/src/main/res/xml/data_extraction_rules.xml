@@ -6,12 +6,15 @@
     the same reason: it unlocks premium features before Google Play has been consulted, so
     restoring it would grant Pro on a device that never paid — and on an offline device the flag
     would never be corrected. Play is the only source of entitlement; user settings restore freely.
+    The rewarded trial (`trial_prefs`) is excluded too: a restored trial was never paid for by an ad.
 -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="billing_prefs.xml" />
+        <exclude domain="sharedpref" path="trial_prefs.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="billing_prefs.xml" />
+        <exclude domain="sharedpref" path="trial_prefs.xml" />
     </device-transfer>
 </data-extraction-rules>
