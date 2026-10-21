@@ -29,19 +29,19 @@ object Spacing {
 /**
  * Corner radii. Larger surfaces get larger radii so nesting reads correctly.
  *
- * Deliberately tight (roughly half the Material 3 defaults) for a crisper, slightly squared look;
+ * Deliberately tight (about a third of the Material 3 defaults) for a crisper, slightly squared look;
  * [NightShieldShapes] maps the same scale onto the M3 shape roles so dialogs, sheets, chips and
  * menus match the hand-built surfaces.
  */
 object Radius {
     /** Chips, badges, small inline surfaces. */
-    val sm = 6.dp
+    val sm = 4.dp
     /** Buttons, banners, dialogs' inner surfaces. */
-    val md = 8.dp
+    val md = 6.dp
     /** Cards and list groups. */
-    val lg = 10.dp
+    val lg = 8.dp
     /** Hero / feature surfaces. */
-    val xl = 14.dp
+    val xl = 10.dp
 }
 
 /** Icon box sizes. Compose scales the 24dp vectors to these. */

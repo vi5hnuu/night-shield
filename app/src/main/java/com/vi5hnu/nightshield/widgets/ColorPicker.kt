@@ -20,6 +20,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.github.skydoves.colorpicker.compose.*
 import com.vi5hnu.nightshield.R
+import com.vi5hnu.nightshield.ui.theme.Radius
 
 @Composable
 fun ColorPicker(
@@ -150,7 +151,7 @@ fun ColorPicker(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp),
-            shape = RoundedCornerShape(14.dp)
+            shape = RoundedCornerShape(Radius.md)
         ) {
             Text("Apply Color", style = MaterialTheme.typography.labelLarge)
         }

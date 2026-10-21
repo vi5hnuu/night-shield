@@ -365,21 +365,21 @@ private fun ThemeSwatch(
                     Modifier
                         .fillMaxWidth(0.6f)
                         .height(6.dp)
-                        .clip(RoundedCornerShape(50))
+                        .clip(RoundedCornerShape(2.dp))
                         .background(accent),
                 )
                 Box(
                     Modifier
                         .fillMaxWidth()
                         .height(10.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(2.dp))
                         .background(card),
                 )
                 Box(
                     Modifier
                         .fillMaxWidth(0.75f)
                         .height(10.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(2.dp))
                         .background(card),
                 )
             }

@@ -35,7 +35,7 @@ fun paletteFor(theme: NightShieldManager.AppTheme): NightPalette? = when (theme)
  * M3's much rounder defaults (dialogs and sheets are 28dp out of the box).
  */
 val NightShieldShapes = Shapes(
-    extraSmall = RoundedCornerShape(4.dp),
+    extraSmall = RoundedCornerShape(2.dp),
     small = RoundedCornerShape(Radius.sm),
     medium = RoundedCornerShape(Radius.md),
     large = RoundedCornerShape(Radius.lg),
