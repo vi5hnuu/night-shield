@@ -3,12 +3,10 @@ package com.vi5hnu.nightshield
 import android.app.Activity
 import android.content.Context
 import com.google.android.gms.ads.AdError
-import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.appopen.AppOpenAd
 
-private const val APP_OPEN_AD_UNIT_ID = "ca-app-pub-4715945578201106/6261357521"
 private const val SHOW_COOLDOWN_MS = 60 * 60 * 1000L  // 60 minutes between shows
 
 object AppOpenAdManager {
@@ -25,8 +23,8 @@ object AppOpenAdManager {
         isLoadingAd = true
         AppOpenAd.load(
             context,
-            APP_OPEN_AD_UNIT_ID,
-            AdRequest.Builder().build(),
+            AdConfig.appOpenUnitId,
+            AdConfig.request(),
             object : AppOpenAd.AppOpenAdLoadCallback() {
                 override fun onAdLoaded(ad: AppOpenAd) {
                     appOpenAd = ad

@@ -6,13 +6,10 @@ import android.os.Handler
 import android.os.Looper
 import androidx.core.content.edit
 import com.google.android.gms.ads.AdError
-import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
-
-private const val INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-4715945578201106/8166997728"
 
 /**
  * Full-screen ad at a natural break: the user switching the filter off from inside the app.
@@ -51,8 +48,8 @@ object InterstitialAdManager {
         isLoading = true
         InterstitialAd.load(
             context,
-            INTERSTITIAL_AD_UNIT_ID,
-            AdRequest.Builder().build(),
+            AdConfig.interstitialUnitId,
+            AdConfig.request(),
             object : InterstitialAdLoadCallback() {
                 override fun onAdLoaded(ad: InterstitialAd) {
                     interstitialAd = ad

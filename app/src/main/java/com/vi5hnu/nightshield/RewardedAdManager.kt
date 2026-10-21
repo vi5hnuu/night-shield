@@ -5,7 +5,6 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.google.android.gms.ads.AdError
-import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.rewarded.RewardedAd
@@ -13,8 +12,6 @@ import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-
-private const val REWARDED_AD_UNIT_ID = "ca-app-pub-4715945578201106/8723374149"
 
 /**
  * "Watch an ad, try Pro for 24 hours" — the rewarded ad behind [ProTrial].
@@ -52,8 +49,8 @@ object RewardedAdManager {
         _availability.value = Availability.LOADING
         RewardedAd.load(
             context.applicationContext,
-            REWARDED_AD_UNIT_ID,
-            AdRequest.Builder().build(),
+            AdConfig.rewardedUnitId,
+            AdConfig.request(),
             object : RewardedAdLoadCallback() {
                 override fun onAdLoaded(ad: RewardedAd) {
                     rewardedAd = ad

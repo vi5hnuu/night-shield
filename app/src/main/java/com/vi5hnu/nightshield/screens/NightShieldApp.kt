@@ -49,9 +49,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
+import com.vi5hnu.nightshield.AdConfig
 import com.vi5hnu.nightshield.R
 import com.vi5hnu.nightshield.screens.apps.AppsScreen
 import com.vi5hnu.nightshield.screens.filter.FilterScreen
@@ -320,8 +320,6 @@ fun NightShieldApp(
 
 // ── Banner ad ─────────────────────────────────────────────────────────────────
 
-private const val BANNER_AD_UNIT_ID = "ca-app-pub-4715945578201106/5606751408"
-
 /**
  * Anchored adaptive banner: sized by the SDK to the real width instead of a fixed 320×50, so it
  * fills phones edge to edge and tablets without empty gutters — adaptive banners also fill and pay
@@ -339,8 +337,8 @@ private fun BannerAd() {
                         setAdSize(
                             AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(ctx, widthDp),
                         )
-                        adUnitId = BANNER_AD_UNIT_ID
-                        loadAd(AdRequest.Builder().build())
+                        adUnitId = AdConfig.bannerUnitId
+                        loadAd(AdConfig.request())
                     }
                 },
                 onRelease = { it.destroy() },
