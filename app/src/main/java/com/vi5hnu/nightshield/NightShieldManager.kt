@@ -129,7 +129,10 @@ object NightShieldManager {
 
     fun setCanvasColor(color: Color) {
         _canvasColor.value = color
-        _activePreset.value = null          // manual color clears preset selection
+        // Derived from the colour rather than cleared: the colour is restored from prefs on every
+        // launch through here, which used to drop the preset — no chip was selected and the hero
+        // called a preset colour "Custom". A hand-picked colour still matches nothing → null.
+        _activePreset.value = TemperaturePreset.entries.firstOrNull { it.color == color }
     }
 
     fun applyTemperaturePreset(preset: TemperaturePreset) {
