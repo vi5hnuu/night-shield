@@ -125,6 +125,8 @@ fun FilterScreen(
             hasOverlayPermission = hasOverlayPermission,
             areServicesActive = areServicesActive,
             streakDays = streakDays,
+            isPro = isPro,
+            onShowUpgrade = onShowUpgrade,
             onPermissionRequest = actions.onPermissionRequest,
             onActivate = actions.launchOverlays,
             onStop = actions.stopOverlays,
@@ -303,6 +305,8 @@ private fun FilterHero(
     hasOverlayPermission: Boolean,
     areServicesActive: Boolean,
     streakDays: Int,
+    isPro: Boolean,
+    onShowUpgrade: () -> Unit,
     onPermissionRequest: () -> Unit,
     onActivate: () -> Unit,
     onStop: () -> Unit,
@@ -311,6 +315,7 @@ private fun FilterHero(
     val context = LocalContext.current
     val canvasColor by NightShieldManager.canvasColor.collectAsState()
     val intensity by NightShieldManager.filterIntensity.collectAsState()
+    val activePreset by NightShieldManager.activePreset.collectAsState()
 
     val transition = rememberInfiniteTransition(label = "hero")
     val glowAlpha by transition.animateFloat(
@@ -349,9 +354,10 @@ private fun FilterHero(
                         ),
                     )
                 } else {
+                    // A faint top-down lift so the off state has depth instead of a flat slab.
                     Brush.verticalGradient(
                         listOf(
-                            MaterialTheme.colorScheme.surfaceContainer,
+                            MaterialTheme.colorScheme.surfaceContainerHigh,
                             MaterialTheme.colorScheme.surfaceContainer,
                         ),
                     )
@@ -420,7 +426,9 @@ private fun FilterHero(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
 
-                if (areServicesActive) {
+                // Current colour and strength in both states, so the hero previews what
+                // "Activate" will apply instead of leaving the off state empty.
+                if (hasOverlayPermission) {
                     Spacer(Modifier.height(Spacing.xs))
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -432,7 +440,7 @@ private fun FilterHero(
                                 .background(canvasColor, CircleShape),
                         )
                         Text(
-                            text = "${(intensity * 100).toInt()}% intensity",
+                            text = "${activePreset?.label ?: "Custom"} · ${(intensity * 100).toInt()}% intensity",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -441,10 +449,12 @@ private fun FilterHero(
 
                 if (streakDays >= 1) {
                     Spacer(Modifier.height(Spacing.md))
+                    // Neutral chip with an amber icon: the filled amber chip clashed with the
+                    // battery notice and read as a second warning.
                     Surface(
-                        shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        shape = RoundedCornerShape(Radius.sm),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     ) {
                         Row(
                             modifier = Modifier.padding(
@@ -457,6 +467,7 @@ private fun FilterHero(
                             Icon(
                                 painter = painterResource(R.drawable.ic_bolt_24),
                                 contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary,
                                 modifier = Modifier.size(IconSize.sm),
                             )
                             Text(
@@ -511,13 +522,15 @@ private fun FilterHero(
                     )
                 }
 
-                // One-tap bedtime routine — warm colour, dimmed, 30-minute sleep timer, then on.
+                // PRO — one-tap bedtime routine: warm colour, dimmed, 30-minute sleep timer, then on.
+                // Left visible for free users (with a lock) because it is the most tangible upsell
+                // on the screen; tapping it opens the paywall.
                 if (hasOverlayPermission && !areServicesActive) {
                     Spacer(Modifier.height(Spacing.md))
                     OutlinedButton(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            BedtimeHelper.apply(context)
+                            if (isPro) BedtimeHelper.apply(context) else onShowUpgrade()
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -531,6 +544,14 @@ private fun FilterHero(
                         )
                         Spacer(Modifier.size(Spacing.sm))
                         Text("Bedtime — warm, dim, 30 min", style = MaterialTheme.typography.labelLarge)
+                        if (!isPro) {
+                            Spacer(Modifier.size(Spacing.sm))
+                            Icon(
+                                painter = painterResource(R.drawable.ic_lock_24),
+                                contentDescription = "Requires Pro",
+                                modifier = Modifier.size(IconSize.sm),
+                            )
+                        }
                     }
                 }
 
@@ -573,6 +594,8 @@ private fun BatteryOptBanner(lifecycleKey: Any) {
                 title = stringResource(R.string.battery_opt_title),
                 text = stringResource(R.string.battery_opt_body),
                 icon = R.drawable.ic_bolt_24,
+                // Amber marks it as a warning without the filled slab it used to be.
+                accent = MaterialTheme.colorScheme.secondary,
                 actions = listOf(
                     InfoBannerAction(stringResource(R.string.battery_opt_dismiss)) {
                         dismissed = true
@@ -668,8 +691,6 @@ private fun ShakeGroup(
     onAllowShake: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
 
     SettingsGroup {
         SettingRow(
@@ -733,18 +754,12 @@ private fun ShakeGroup(
                     )
                 }
 
-                // Turning the filter ON by shake while the app is closed needs the accessibility
-                // service. Re-checked on each lifecycle change so the hint clears immediately.
-                val accessibilityEnabled = remember(lifecycleState) {
-                    val enabled = android.provider.Settings.Secure.getString(
-                        context.contentResolver,
-                        android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-                    ) ?: ""
-                    enabled.contains(context.packageName, ignoreCase = true)
-                }
-                if (!accessibilityEnabled) {
+                // Shake-to-ON with the app closed comes from ShakeMonitorService, not the
+                // accessibility service (the old hint here still sent users to Accessibility
+                // settings). The only thing that limits it now is Background shake being off.
+                if (!backgroundShake) {
                     InfoBanner(
-                        text = "To turn the filter on by shaking while the app is closed, enable Night Shield in Accessibility settings.",
+                        text = "Background shake is off, so shaking only toggles the filter while Night Shield is open.",
                         modifier = Modifier.padding(
                             start = Spacing.lg,
                             end = Spacing.lg,

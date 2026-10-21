@@ -40,7 +40,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.vi5hnu.nightshield.BillingManager
+import com.vi5hnu.nightshield.FreeTier
 import com.vi5hnu.nightshield.R
+import com.vi5hnu.nightshield.ui.components.readableWidth
 import com.vi5hnu.nightshield.ui.theme.IconSize
 import com.vi5hnu.nightshield.ui.theme.Radius
 import com.vi5hnu.nightshield.ui.theme.Spacing
@@ -59,31 +61,46 @@ private data class ProFeature(
     val description: String,
 )
 
+/**
+ * Ordered by what people buy a utility app for: removing ads first, then the automation
+ * competitors' reviewers ask for most (sunset/sunrise, one-tap routines), then customisation.
+ * Every Pro gate in the app must appear here — Auto sunset and Adaptive intensity were missing.
+ */
 private val PRO_FEATURES = listOf(
+    ProFeature(R.drawable.ic_shield_24, "No ads", "No banners, no full-screen ads — ever"),
+    ProFeature(R.drawable.ic_location_24, "Auto sunset & sunrise", "The filter follows the sun where you live"),
+    ProFeature(R.drawable.ic_bedtime_24, "Bedtime routine", "Warm, dimmed and a sleep timer in one tap"),
     ProFeature(R.drawable.ic_star_24, "Smart profiles", "Save and switch filter presets with one tap"),
-    ProFeature(R.drawable.ic_palette_24, "Per-app colour", "Give every app its own filter colour"),
-    ProFeature(R.drawable.ic_twilight_24, "Gradual fade-in", "The filter eases in instead of snapping on"),
     ProFeature(R.drawable.ic_alarm_24, "Unlimited schedules", "Different intensities at different times"),
+    ProFeature(R.drawable.ic_palette_24, "Unlimited per-app rules", "Pause or recolour the filter for every app"),
+    ProFeature(R.drawable.ic_tune_24, "Adaptive intensity", "Eases the filter in brighter rooms automatically"),
+    ProFeature(R.drawable.ic_dark_mode_24, "Follow dark mode", "The filter turns on with system dark mode"),
+    ProFeature(R.drawable.ic_twilight_24, "Gradual fade-in", "The filter eases in instead of snapping on"),
     ProFeature(R.drawable.ic_light_mode_24, "Sunrise mode", "The filter lifts gradually at your wake-up time"),
-    ProFeature(R.drawable.ic_notifications_24, "Notification controls", "Nudge intensity ±10% from the notification"),
+    ProFeature(R.drawable.ic_notifications_24, "Quick intensity controls", "Nudge intensity ±10% from the notification or widget"),
     ProFeature(R.drawable.ic_widgets_24, "Widget styles", "Standard, minimal or detailed home-screen widgets"),
-    ProFeature(R.drawable.ic_dark_mode_24, "App themes", "Six palettes including OLED black and Material You"),
+    ProFeature(R.drawable.ic_palette_24, "App themes", "Six palettes including OLED black and Material You"),
     ProFeature(R.drawable.ic_download_24, "Backup & restore", "Export and import every setting"),
     ProFeature(R.drawable.ic_bolt_24, "Automation", "Drive the filter from Tasker, Shortcuts or Bixby"),
     ProFeature(R.drawable.ic_bar_chart_24, "7-day report", "Weekly stats on your filtered screen time"),
 )
 
+/** Lets copy elsewhere (the upgrade prompt) quote the real number instead of a stale literal. */
+internal val PRO_FEATURE_COUNT: Int get() = PRO_FEATURES.size
+
 private data class CompareRow(val feature: String, val free: String, val pro: String)
 
 private val COMPARE_ROWS = listOf(
-    CompareRow("Blue light filter", "Yes", "Yes"),
+    CompareRow("Blue light filter & dimming", "Yes", "Yes"),
     CompareRow("Temperature presets", "Yes", "Yes"),
-    CompareRow("Schedules", "1", "Unlimited"),
-    CompareRow("Per-app filter", "3 apps", "Unlimited + colour"),
+    CompareRow("Ads", "Shown", "None"),
+    CompareRow("Schedules", "${FreeTier.MAX_SCHEDULES}", "Unlimited"),
+    CompareRow("Per-app rules", "${FreeTier.MAX_APP_RULES} app", "Unlimited + colour"),
+    CompareRow("Auto sunset & sunrise", "—", "Yes"),
+    CompareRow("Bedtime routine", "—", "Yes"),
     CompareRow("Profiles", "—", "Yes"),
     CompareRow("7-day report", "—", "Yes"),
-    CompareRow("Gradual fade-in", "—", "Yes"),
-    CompareRow("Notification ±10%", "—", "Yes"),
+    CompareRow("Intensity ±10% controls", "—", "Yes"),
     CompareRow("Backup & restore", "—", "Yes"),
     CompareRow("Tasker & shortcuts", "—", "Yes"),
 )
@@ -127,7 +144,8 @@ fun UpgradeScreen(
         }
 
         LazyColumn(
-            modifier = Modifier.weight(1f),
+            // Centred, width-capped on tablets so the feature list stays scannable.
+            modifier = Modifier.weight(1f).readableWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
             contentPadding = PaddingValues(horizontal = Spacing.xl, vertical = Spacing.sm),
         ) {
@@ -165,6 +183,7 @@ fun UpgradeScreen(
             ) {
                 Column(
                     modifier = Modifier
+                        .readableWidth()
                         .padding(horizontal = Spacing.xl, vertical = Spacing.md)
                         .navigationBarsPadding(),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -205,7 +224,7 @@ private fun Header(isPro: Boolean) {
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(88.dp)
-                .clip(CircleShape)
+                .clip(RoundedCornerShape(Radius.xl))
                 .background(
                     Brush.radialGradient(
                         listOf(
@@ -234,7 +253,7 @@ private fun Header(isPro: Boolean) {
             if (isPro) {
                 "Every premium feature is unlocked. Thank you for supporting Night Shield."
             } else {
-                "One payment. Every feature. No subscription."
+                "No ads. Every feature. One payment, no subscription."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

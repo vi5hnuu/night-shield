@@ -161,7 +161,7 @@ object BackupHelper {
             }.let { list ->
                 if (ProGate.isPro.value) list
                 // Strip targetIntensity (Pro-only) from the one schedule free users keep
-                else list.take(1).map { s -> s.copy(targetIntensity = null) }
+                else FreeTier.activeSchedules(list, isPro = false).map { s -> s.copy(targetIntensity = null) }
             }
             NightShieldManager.setSchedules(schedules)
         }

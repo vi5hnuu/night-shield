@@ -1,7 +1,7 @@
 package com.vi5hnu.nightshield.screens.schedule
 
-import android.app.TimePickerDialog
 import android.content.Context
+import android.text.format.DateFormat
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +23,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -30,6 +31,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
+import androidx.compose.material3.TimeInput
+import androidx.compose.material3.TimePickerDefaults
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,9 +50,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.vi5hnu.nightshield.AlarmHelpers
+import com.vi5hnu.nightshield.FreeTier
 import com.vi5hnu.nightshield.NightShieldManager
 import com.vi5hnu.nightshield.OverlayHelpers
 import com.vi5hnu.nightshield.R
+import com.vi5hnu.nightshield.ReviewPrompter
 import com.vi5hnu.nightshield.ScheduleAction
 import com.vi5hnu.nightshield.ScheduleEntry
 import com.vi5hnu.nightshield.SunTimes
@@ -63,6 +70,7 @@ import com.vi5hnu.nightshield.ui.theme.IconSize
 import com.vi5hnu.nightshield.ui.theme.Radius
 import com.vi5hnu.nightshield.ui.theme.Spacing
 import java.time.Instant
+import java.time.LocalTime
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -96,7 +104,11 @@ fun ScheduleScreen(
         Spacer(Modifier.height(Spacing.sm))
 
         SectionHeader(stringResource(R.string.schedule_title))
-        SchedulesGroup(isPro = isPro, onShowUpgrade = onShowUpgrade)
+        SchedulesGroup(
+            isPro = isPro,
+            onShowUpgrade = onShowUpgrade,
+            onScheduleAdded = { actions.onReviewMoment(ReviewPrompter.Moment.SCHEDULE_ADDED) },
+        )
 
         Spacer(Modifier.height(Spacing.xxl))
 
@@ -117,13 +129,15 @@ fun ScheduleScreen(
             SettingRow(
                 icon = R.drawable.ic_visibility_24,
                 title = "20-20-20 eye breaks",
-                subtitle = "Every 20 minutes, a reminder to look 20 feet away for 20 seconds",
+                subtitle = "While the filter is on, a reminder every 20 minutes to look 20 feet away for 20 seconds",
                 trailing = {
                     Switch(
                         checked = eyeBreak,
                         onCheckedChange = {
                             NightShieldManager.setEyeBreakEnabled(it)
                             OverlayHelpers.saveEyeBreakEnabled(context, it)
+                            // Reminders are notifications — useless without the permission.
+                            if (it) actions.ensureNotificationPermission()
                         },
                     )
                 },
@@ -135,14 +149,20 @@ fun ScheduleScreen(
                 icon = R.drawable.ic_dark_mode_24,
                 title = "Follow system dark mode",
                 subtitle = "Turn the filter on when the system switches to dark mode",
+                enabled = isPro,
+                onClick = if (isPro) null else onShowUpgrade,
                 trailing = {
-                    Switch(
-                        checked = darkSync,
-                        onCheckedChange = {
-                            NightShieldManager.setDarkModeAutoSync(it)
-                            OverlayHelpers.saveDarkModeSync(context, it)
-                        },
-                    )
+                    if (isPro) {
+                        Switch(
+                            checked = darkSync,
+                            onCheckedChange = {
+                                NightShieldManager.setDarkModeAutoSync(it)
+                                OverlayHelpers.saveDarkModeSync(context, it)
+                            },
+                        )
+                    } else {
+                        ProBadge(onClick = onShowUpgrade)
+                    }
                 },
             )
         }
@@ -154,12 +174,23 @@ fun ScheduleScreen(
 // ── Fixed schedules ───────────────────────────────────────────────────────────
 
 @Composable
-private fun SchedulesGroup(isPro: Boolean, onShowUpgrade: () -> Unit) {
+private fun SchedulesGroup(
+    isPro: Boolean,
+    onShowUpgrade: () -> Unit,
+    onScheduleAdded: () -> Unit,
+) {
     val context = LocalContext.current
     val schedules by NightShieldManager.schedules.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
-    // Free users get one schedule; Pro is unlimited.
-    val canAddMore = isPro || schedules.isEmpty()
+    // Free users get FreeTier.MAX_SCHEDULES; Pro is unlimited.
+    val canAddMore = isPro || schedules.size < FreeTier.MAX_SCHEDULES
+
+    // Every edit is saved and armed on the spot. It used to wait for onPause, so a schedule added
+    // just before the process died was lost, and an edit only took effect after leaving the app.
+    fun commitSchedules(edit: () -> Unit) {
+        edit()
+        AlarmHelpers.commit(context, NightShieldManager.schedules.value)
+    }
 
     SettingsGroup {
         Row(
@@ -178,6 +209,7 @@ private fun SchedulesGroup(isPro: Boolean, onShowUpgrade: () -> Unit) {
             }
             if (canAddMore) {
                 FilledTonalIconButton(
+                    shape = RoundedCornerShape(Radius.md),
                     onClick = { showAddDialog = true },
                     colors = IconButtonDefaults.filledTonalIconButtonColors(
                         containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -205,8 +237,8 @@ private fun SchedulesGroup(isPro: Boolean, onShowUpgrade: () -> Unit) {
             schedules.forEachIndexed { index, entry ->
                 ScheduleRow(
                     entry = entry,
-                    onToggle = { NightShieldManager.toggleScheduleEnabled(entry.id) },
-                    onDelete = { NightShieldManager.removeSchedule(entry.id) },
+                    onToggle = { commitSchedules { NightShieldManager.toggleScheduleEnabled(entry.id) } },
+                    onDelete = { commitSchedules { NightShieldManager.removeSchedule(entry.id) } },
                 )
                 if (index < schedules.lastIndex) SettingsDivider()
             }
@@ -230,7 +262,8 @@ private fun SchedulesGroup(isPro: Boolean, onShowUpgrade: () -> Unit) {
                         Toast.LENGTH_SHORT,
                     ).show()
                 } else {
-                    NightShieldManager.addSchedule(entry)
+                    commitSchedules { NightShieldManager.addSchedule(entry) }
+                    onScheduleAdded()
                 }
                 showAddDialog = false
             },
@@ -258,7 +291,7 @@ private fun ScheduleRow(
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = entry.timeString,
+                text = formatClock(LocalContext.current, LocalTime.of(entry.hour, entry.minute)),
                 style = MaterialTheme.typography.titleMedium,
                 color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
                 else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
@@ -285,6 +318,7 @@ private fun ScheduleRow(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddScheduleDialog(
     context: Context,
@@ -292,8 +326,13 @@ private fun AddScheduleDialog(
     onDismiss: () -> Unit,
     onConfirm: (ScheduleEntry) -> Unit,
 ) {
-    var selectedHour by remember { mutableIntStateOf(22) }
-    var selectedMinute by remember { mutableIntStateOf(0) }
+    // Inline M3 time entry instead of the platform TimePickerDialog, which opened a second,
+    // light-themed (green/cream) dialog on top of this dark one.
+    val timeState = rememberTimePickerState(
+        initialHour = 22,
+        initialMinute = 0,
+        is24Hour = DateFormat.is24HourFormat(context),
+    )
     var selectedAction by remember { mutableStateOf(ScheduleAction.ON) }
 
     AlertDialog(
@@ -302,31 +341,16 @@ private fun AddScheduleDialog(
         title = { Text(stringResource(R.string.schedule_add), style = MaterialTheme.typography.titleMedium) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.lg)) {
-                OutlinedButton(
-                    onClick = {
-                        TimePickerDialog(
-                            context,
-                            { _, h, m ->
-                                selectedHour = h
-                                selectedMinute = m
-                            },
-                            selectedHour, selectedMinute, true,
-                        ).show()
-                    },
+                TimeInput(
+                    state = timeState,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(Radius.sm),
-                ) {
-                    Icon(
-                        painterResource(R.drawable.ic_schedule_24),
-                        contentDescription = null,
-                        modifier = Modifier.size(IconSize.sm + 2.dp),
-                    )
-                    Spacer(Modifier.width(Spacing.sm))
-                    Text(
-                        "%02d:%02d".format(selectedHour, selectedMinute),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
+                    colors = TimePickerDefaults.colors(
+                        timeSelectorSelectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        timeSelectorSelectedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        periodSelectorSelectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        periodSelectorSelectedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                )
 
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Row(
@@ -394,8 +418,8 @@ private fun AddScheduleDialog(
                 onClick = {
                     onConfirm(
                         ScheduleEntry(
-                            hour = selectedHour,
-                            minute = selectedMinute,
+                            hour = timeState.hour,
+                            minute = timeState.minute,
                             action = selectedAction,
                         ),
                     )
@@ -447,9 +471,8 @@ private fun AutoScheduleGroup(
                 location?.let { SunTimes.compute(it.lat, it.lon, LocalDate.now()) }
             }
             val zone = ZoneId.systemDefault()
-            val formatter = remember { DateTimeFormatter.ofPattern("HH:mm") }
             fun format(ms: Long) =
-                Instant.ofEpochMilli(ms).atZone(zone).toLocalTime().format(formatter)
+                formatClock(context, Instant.ofEpochMilli(ms).atZone(zone).toLocalTime())
 
             val sunrise = times?.let { format(it.first) } ?: "--:--"
             val sunset = times?.let { format(it.second) } ?: "--:--"
@@ -519,3 +542,9 @@ private fun TimeHint(icon: Int, label: String) {
         )
     }
 }
+
+/** Formats a clock time in the user's 12/24-hour preference (times were always shown as 24h). */
+private fun formatClock(context: Context, time: LocalTime): String =
+    time.format(
+        DateTimeFormatter.ofPattern(if (DateFormat.is24HourFormat(context)) "HH:mm" else "h:mm a"),
+    )

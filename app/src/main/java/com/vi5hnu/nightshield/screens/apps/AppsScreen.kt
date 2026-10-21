@@ -67,7 +67,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import com.vi5hnu.nightshield.AppFilterConfig
+import com.vi5hnu.nightshield.FreeTier
 import com.vi5hnu.nightshield.NightShieldManager
+import com.vi5hnu.nightshield.OverlayHelpers
 import com.vi5hnu.nightshield.R
 import com.vi5hnu.nightshield.ui.components.EmptyState
 import com.vi5hnu.nightshield.ui.components.InfoBanner
@@ -97,8 +99,24 @@ fun AppsScreen(
     val configs by NightShieldManager.appFilterConfigs.collectAsState()
     var showAppPicker by remember { mutableStateOf(false) }
     var showAccessibilityDialog by remember { mutableStateOf(false) }
-    // Free users are limited to three per-app rules; Pro is unlimited.
-    val canAddMore = isPro || configs.size < 3
+    // Free users get FreeTier.MAX_APP_RULES; Pro is unlimited. Rules over the cap (added while
+    // Pro, or before the free allowance shrank) are kept but shown locked, never deleted.
+    val canAddMore = isPro || configs.size < FreeTier.MAX_APP_RULES
+    val activeRules = remember(configs, isPro) { FreeTier.activeAppRules(configs, isPro) }
+    // Same order FreeTier uses to pick the active rule, so the one that works is listed first.
+    val orderedConfigs = remember(configs, activeRules) {
+        configs.values.sortedWith(
+            compareByDescending<AppFilterConfig> { it.packageName in activeRules }
+                .thenBy { it.appLabel.lowercase() },
+        )
+    }
+
+    // Edits are saved immediately (they used to wait for onPause), so the accessibility service
+    // in another process and a process kill both see the latest rules.
+    fun commitConfigs(edit: () -> Unit) {
+        edit()
+        OverlayHelpers.saveAppConfigs(context, NightShieldManager.appFilterConfigs.value)
+    }
 
     // Accessibility status is re-read on each lifecycle change, so the banner clears as soon as
     // the user returns from enabling the service.
@@ -125,8 +143,7 @@ fun AppsScreen(
                 title = "Accessibility service is off",
                 text = "Night Shield needs it to see which app is in the foreground before per-app rules can apply.",
                 icon = R.drawable.ic_apps_24,
-                container = MaterialTheme.colorScheme.tertiaryContainer,
-                content = MaterialTheme.colorScheme.onTertiaryContainer,
+                accent = MaterialTheme.colorScheme.tertiary,
                 actions = listOf(
                     InfoBannerAction("Enable", emphasised = true) { showAccessibilityDialog = true },
                 ),
@@ -152,6 +169,7 @@ fun AppsScreen(
                 )
                 if (canAddMore) {
                     FilledTonalIconButton(
+                        shape = RoundedCornerShape(Radius.md),
                         onClick = { showAppPicker = true },
                         colors = IconButtonDefaults.filledTonalIconButtonColors(
                             containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -173,15 +191,18 @@ fun AppsScreen(
                 )
             } else {
                 Spacer(Modifier.height(Spacing.sm))
-                configs.values.forEachIndexed { index, config ->
+                orderedConfigs.forEachIndexed { index, config ->
                     AppConfigRow(
                         config = config,
                         isPro = isPro,
+                        locked = config.packageName !in activeRules,
                         onShowUpgrade = onShowUpgrade,
-                        onUpdate = { NightShieldManager.setAppFilterConfig(it) },
-                        onDelete = { NightShieldManager.removeAppFilterConfig(config.packageName) },
+                        onUpdate = { commitConfigs { NightShieldManager.setAppFilterConfig(it) } },
+                        onDelete = {
+                            commitConfigs { NightShieldManager.removeAppFilterConfig(config.packageName) }
+                        },
                     )
-                    if (index < configs.size - 1) SettingsDivider()
+                    if (index < orderedConfigs.lastIndex) SettingsDivider()
                 }
                 Spacer(Modifier.height(Spacing.sm))
             }
@@ -206,9 +227,11 @@ fun AppsScreen(
             alreadyAdded = configs.keys,
             onDismiss = { showAppPicker = false },
             onAppSelected = { pkg, label ->
-                NightShieldManager.setAppFilterConfig(
-                    AppFilterConfig(packageName = pkg, appLabel = label),
-                )
+                commitConfigs {
+                    NightShieldManager.setAppFilterConfig(
+                        AppFilterConfig(packageName = pkg, appLabel = label),
+                    )
+                }
                 showAppPicker = false
             },
         )
@@ -232,8 +255,14 @@ private fun AccessibilityDialog(onDismiss: () -> Unit, onAllow: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
-        confirmButton = { Button(onClick = onAllow) { Text("Allow") } },
-        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("No thanks") } },
+        confirmButton = {
+            Button(onClick = onAllow, shape = RoundedCornerShape(Radius.md)) { Text("Allow") }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss, shape = RoundedCornerShape(Radius.md)) {
+                Text("No thanks")
+            }
+        },
     )
 }
 
@@ -242,6 +271,8 @@ private fun AccessibilityDialog(onDismiss: () -> Unit, onAllow: () -> Unit) {
 private fun AppConfigRow(
     config: AppFilterConfig,
     isPro: Boolean,
+    /** Over the free allowance: kept, but not applied until the user upgrades. */
+    locked: Boolean,
     onShowUpgrade: () -> Unit,
     onUpdate: (AppFilterConfig) -> Unit,
     onDelete: () -> Unit,
@@ -267,20 +298,28 @@ private fun AppConfigRow(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    if (config.filterDisabled) "Filter paused in this app" else "Filter active in this app",
+                    when {
+                        locked -> "Not applied — Pro unlocks more than ${FreeTier.MAX_APP_RULES} app"
+                        config.filterDisabled -> "Filter paused in this app"
+                        else -> "Filter active in this app"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Switch(
-                checked = config.filterDisabled,
-                onCheckedChange = { onUpdate(config.copy(filterDisabled = it)) },
-                // The row's text describes the state, not the control, so name the switch itself
-                // for screen readers.
-                modifier = Modifier.semantics {
-                    contentDescription = pauseLabel
-                },
-            )
+            if (locked) {
+                ProBadge(onClick = onShowUpgrade)
+            } else {
+                Switch(
+                    checked = config.filterDisabled,
+                    onCheckedChange = { onUpdate(config.copy(filterDisabled = it)) },
+                    // The row's text describes the state, not the control, so name the switch
+                    // itself for screen readers.
+                    modifier = Modifier.semantics {
+                        contentDescription = pauseLabel
+                    },
+                )
+            }
             IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
                 Icon(
                     painterResource(R.drawable.ic_delete_24),
@@ -292,7 +331,7 @@ private fun AppConfigRow(
         }
 
         // Custom intensity and colour apply only while the filter runs in that app.
-        AnimatedVisibility(visible = !config.filterDisabled) {
+        AnimatedVisibility(visible = !config.filterDisabled && !locked) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

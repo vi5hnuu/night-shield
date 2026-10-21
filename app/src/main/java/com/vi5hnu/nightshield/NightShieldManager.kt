@@ -17,9 +17,7 @@ data class ScheduleEntry(
     val enabled: Boolean = true,
     /** PRO — for ON action: set filter to this intensity when schedule fires. */
     val targetIntensity: Float? = null,
-) {
-    val timeString: String get() = "%02d:%02d".format(hour, minute)
-}
+)
 
 // ── Per-app filter model ──────────────────────────────────────────────────────
 
@@ -131,7 +129,10 @@ object NightShieldManager {
 
     fun setCanvasColor(color: Color) {
         _canvasColor.value = color
-        _activePreset.value = null          // manual color clears preset selection
+        // Derived from the colour rather than cleared: the colour is restored from prefs on every
+        // launch through here, which used to drop the preset — no chip was selected and the hero
+        // called a preset colour "Custom". A hand-picked colour still matches nothing → null.
+        _activePreset.value = TemperaturePreset.entries.firstOrNull { it.color == color }
     }
 
     fun applyTemperaturePreset(preset: TemperaturePreset) {

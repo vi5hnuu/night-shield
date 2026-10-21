@@ -28,12 +28,9 @@ class BootReceiver : BroadcastReceiver() {
         }
         NightShieldWidgetProvider.updateWidget(context)
 
-        // Re-schedule alarms lost on reboot; respect free-tier cap in case Pro was revoked offline
-        val schedules = OverlayHelpers.loadSchedules(context)
-        val schedulesToActivate = if (ProGate.isPro.value) schedules else schedules.take(1)
-        if (schedulesToActivate.isNotEmpty()) {
-            AlarmHelpers.scheduleAll(context, schedulesToActivate)
-        }
+        // Re-schedule alarms lost on reboot; rearm applies the free-tier cap in case Pro was
+        // revoked offline.
+        AlarmHelpers.rearm(context)
 
         // Start shake monitor so shake-to-ON works after reboot (filter off at boot)
         NightShieldController.syncShakeMonitor(context)

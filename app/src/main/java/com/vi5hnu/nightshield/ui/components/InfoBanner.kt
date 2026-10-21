@@ -1,7 +1,10 @@
 package com.vi5hnu.nightshield.ui.components
 
 import androidx.annotation.DrawableRes
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,6 +33,12 @@ import com.vi5hnu.nightshield.ui.theme.Spacing
  * Replaces the ad-hoc emoji notes (`ℹ️ …`) and the bespoke battery card, so every advisory in the
  * app looks the same and carries its actions in the same place.
  *
+ * Styled as a calm card — neutral surface, a hairline in the [accent] colour and the icon in an
+ * accent-tinted tile — rather than a fully filled colour block. The filled version shouted on every
+ * launch (the battery notice sat above the main control as a solid mustard slab) and competed with
+ * the primary action for attention.
+ *
+ * @param accent colour of the icon tile, outline and emphasised action.
  * @param actions optional trailing buttons; use [InfoBannerAction] entries.
  */
 @Composable
@@ -38,15 +47,17 @@ fun InfoBanner(
     modifier: Modifier = Modifier,
     title: String? = null,
     @DrawableRes icon: Int = R.drawable.ic_info_24,
-    container: Color = MaterialTheme.colorScheme.secondaryContainer,
-    content: Color = MaterialTheme.colorScheme.onSecondaryContainer,
+    accent: Color = MaterialTheme.colorScheme.primary,
+    container: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    content: Color = MaterialTheme.colorScheme.onSurface,
     actions: List<InfoBannerAction> = emptyList(),
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(Radius.md),
+        shape = RoundedCornerShape(Radius.lg),
         color = container,
         contentColor = content,
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.28f)),
     ) {
         Column(
             modifier = Modifier.padding(
@@ -61,11 +72,19 @@ fun InfoBanner(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md),
                 verticalAlignment = Alignment.Top,
             ) {
-                Icon(
-                    painter = painterResource(icon),
-                    contentDescription = null,
-                    modifier = Modifier.size(IconSize.md - 4.dp),
-                )
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(accent.copy(alpha = 0.16f), RoundedCornerShape(Radius.md)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(icon),
+                        contentDescription = null,
+                        tint = accent,
+                        modifier = Modifier.size(IconSize.sm + 2.dp),
+                    )
+                }
                 Column(modifier = Modifier.weight(1f)) {
                     if (title != null) {
                         Text(title, style = MaterialTheme.typography.titleSmall)
@@ -73,7 +92,7 @@ fun InfoBanner(
                     Text(
                         text,
                         style = MaterialTheme.typography.bodySmall,
-                        color = content.copy(alpha = 0.85f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -93,7 +112,8 @@ fun InfoBanner(
                             Text(
                                 action.label,
                                 style = MaterialTheme.typography.labelMedium,
-                                color = if (action.emphasised) content else content.copy(alpha = 0.7f),
+                                color = if (action.emphasised) accent
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }

@@ -26,16 +26,22 @@ object Spacing {
     val xxxl = 32.dp
 }
 
-/** Corner radii. Larger surfaces get larger radii so nesting reads correctly. */
+/**
+ * Corner radii. Larger surfaces get larger radii so nesting reads correctly.
+ *
+ * Deliberately tight (about a third of the Material 3 defaults) for a crisper, slightly squared look;
+ * [NightShieldShapes] maps the same scale onto the M3 shape roles so dialogs, sheets, chips and
+ * menus match the hand-built surfaces.
+ */
 object Radius {
     /** Chips, badges, small inline surfaces. */
-    val sm = 12.dp
+    val sm = 4.dp
     /** Buttons, banners, dialogs' inner surfaces. */
-    val md = 16.dp
+    val md = 6.dp
     /** Cards and list groups. */
-    val lg = 20.dp
+    val lg = 8.dp
     /** Hero / feature surfaces. */
-    val xl = 28.dp
+    val xl = 10.dp
 }
 
 /** Icon box sizes. Compose scales the 24dp vectors to these. */
@@ -48,4 +54,18 @@ object IconSize {
     val lg = 28.dp
     /** Hero / empty-state illustration. */
     val xl = 44.dp
+}
+
+/**
+ * Breakpoints for large screens (tablets, foldables, landscape).
+ *
+ * Settings-style content stretched across a 10" display is hard to read, so screens cap their
+ * width at [contentMaxWidth] and centre it, and from [expandedWidth] the bottom bar becomes a
+ * navigation rail. Plain dp thresholds (Material's compact/medium split) — no window-size library.
+ */
+object AdaptiveLayout {
+    /** Widest a column of settings/content may grow. */
+    val contentMaxWidth = 640.dp
+    /** At or above this window width, navigation moves to a side rail. */
+    const val expandedWidthDp = 600
 }

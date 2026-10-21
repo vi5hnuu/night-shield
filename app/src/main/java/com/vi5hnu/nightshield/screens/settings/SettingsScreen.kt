@@ -31,13 +31,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.vi5hnu.nightshield.BuildConfig
 import com.vi5hnu.nightshield.NightShieldManager
+import com.vi5hnu.nightshield.OverlayHelpers
+import com.vi5hnu.nightshield.NightShieldWidgetProvider
 import com.vi5hnu.nightshield.R
+import com.vi5hnu.nightshield.ReviewPrompter
 import com.vi5hnu.nightshield.screens.NightShieldActions
 import com.vi5hnu.nightshield.ui.components.ProBadge
 import com.vi5hnu.nightshield.ui.components.SectionHeader
@@ -59,6 +63,7 @@ fun SettingsScreen(
     actions: NightShieldActions,
     onShowUpgrade: () -> Unit,
 ) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -98,7 +103,13 @@ fun SettingsScreen(
                     },
                     enabled = isPro,
                     onClick = if (isPro) {
-                        { NightShieldManager.setWidgetStyle(style) }
+                        {
+                            // Saved and redrawn now: the widget reads the stored style, which used
+                            // to change only on onPause, so the home screen kept the old layout.
+                            NightShieldManager.setWidgetStyle(style)
+                            OverlayHelpers.saveWidgetStyle(context, style)
+                            NightShieldWidgetProvider.updateWidget(context)
+                        }
                     } else {
                         onShowUpgrade
                     },
@@ -122,6 +133,7 @@ fun SettingsScreen(
                 trailing = {
                     if (isPro) {
                         FilledTonalButton(
+                            shape = RoundedCornerShape(Radius.md),
                             onClick = actions.onExportSettings,
                             contentPadding = PaddingValues(horizontal = Spacing.md, vertical = 6.dp),
                             modifier = Modifier.height(34.dp),
@@ -141,6 +153,7 @@ fun SettingsScreen(
                 trailing = {
                     if (isPro) {
                         FilledTonalButton(
+                            shape = RoundedCornerShape(Radius.md),
                             onClick = actions.onImportSettings,
                             contentPadding = PaddingValues(horizontal = Spacing.md, vertical = 6.dp),
                             modifier = Modifier.height(34.dp),
@@ -163,6 +176,23 @@ fun SettingsScreen(
         // ── About ─────────────────────────────────────────────────────────────
         SectionHeader("About")
         SettingsGroup {
+            // Opens the store listing directly: the in-app review card is subject to a Play quota
+            // and may show nothing, which would make a button look broken.
+            SettingRow(
+                icon = R.drawable.ic_star_24,
+                title = "Rate Night Shield",
+                subtitle = "A review helps others find the app",
+                onClick = { ReviewPrompter.openStoreListing(context) },
+                trailing = {
+                    Icon(
+                        painterResource(R.drawable.ic_chevron_right_24),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(IconSize.md),
+                    )
+                },
+            )
+            SettingsDivider()
             SettingRow(
                 icon = R.drawable.ic_shield_24,
                 title = stringResource(R.string.app_name),
@@ -211,7 +241,7 @@ private fun UpgradeCard(onShowUpgrade: () -> Unit) {
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(Radius.md)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -228,7 +258,7 @@ private fun UpgradeCard(onShowUpgrade: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    "Profiles, themes, automation and more — one payment",
+                    "No ads, auto sunset, bedtime routine and more — one payment",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -335,21 +365,21 @@ private fun ThemeSwatch(
                     Modifier
                         .fillMaxWidth(0.6f)
                         .height(6.dp)
-                        .clip(RoundedCornerShape(50))
+                        .clip(RoundedCornerShape(2.dp))
                         .background(accent),
                 )
                 Box(
                     Modifier
                         .fillMaxWidth()
                         .height(10.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(2.dp))
                         .background(card),
                 )
                 Box(
                     Modifier
                         .fillMaxWidth(0.75f)
                         .height(10.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(2.dp))
                         .background(card),
                 )
             }

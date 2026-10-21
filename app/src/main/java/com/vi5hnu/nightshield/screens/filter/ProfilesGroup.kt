@@ -125,6 +125,7 @@ fun ProfilesGroup(
                 trailing = {
                     if (isPro) {
                         FilledTonalButton(
+                            shape = RoundedCornerShape(Radius.md),
                             onClick = {
                                 NightShieldManager.setCanvasColor(Color(profile.colorArgb))
                                 NightShieldManager.setFilterIntensity(profile.intensity)
@@ -167,6 +168,7 @@ fun ProfilesGroup(
                     trailing = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             FilledTonalButton(
+                                shape = RoundedCornerShape(Radius.md),
                                 onClick = {
                                     NightShieldManager.setCanvasColor(Color(profile.colorArgb))
                                     NightShieldManager.setFilterIntensity(profile.intensity)
@@ -286,7 +288,7 @@ private fun ProfileRow(
         }
         if (showIntensityPill) {
             Surface(
-                shape = RoundedCornerShape(50),
+                shape = RoundedCornerShape(Radius.sm),
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
             ) {
                 Text(

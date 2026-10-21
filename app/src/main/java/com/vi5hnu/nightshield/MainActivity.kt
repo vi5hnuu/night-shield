@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
@@ -15,7 +16,6 @@ import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import com.google.android.gms.ads.MobileAds
-import com.google.android.play.core.review.ReviewManagerFactory
 import com.vi5hnu.nightshield.screens.NightShieldActions
 import com.vi5hnu.nightshield.screens.NightShieldApp
 import com.vi5hnu.nightshield.screens.OnboardingScreen
@@ -24,6 +24,12 @@ import com.vi5hnu.nightshield.ui.theme.NightShieldTheme
 class MainActivity : ComponentActivity() {
 
     private var hasOverlayPermission = mutableStateOf(false)
+
+    /**
+     * Set when the activity is opened to show the paywall (a locked widget control). Consumed by
+     * the UI once shown, so a rotation or resume does not reopen it.
+     */
+    private val upgradeRequested = mutableStateOf(false)
 
     private val prefs by lazy { getSharedPreferences("overlay_prefs", MODE_PRIVATE) }
 
@@ -104,6 +110,30 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // ── Notifications (Android 13+) ───────────────────────────────────────────
+    // The permission was never declared or requested, so on API 33+ the filter's notification
+    // (with the Pro ±10% controls), eye-break reminders and the weekly report were all invisible.
+    private val requestNotificationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        // The filter's foreground notification was posted (and dropped) before the user answered.
+        // Re-delivering the start command makes the running service call startForeground again,
+        // which re-posts it; the service treats a repeat start as a no-op otherwise.
+        if (granted && NightShieldService.isRunning) startOverlayService()
+    }
+
+    /**
+     * Asks once per contextual trigger. Android itself stops showing the dialog after the user
+     * denies twice, so calling this from several places cannot turn into nagging.
+     */
+    private fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
     private fun hasLocationPermission() = ContextCompat.checkSelfPermission(
         this, Manifest.permission.ACCESS_COARSE_LOCATION
     ) == PackageManager.PERMISSION_GRANTED
@@ -111,6 +141,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        consumeUpgradeRequest(intent)
 
         MobileAds.initialize(this)
         AppOpenAdManager.loadAd(this)
@@ -179,18 +210,14 @@ class MainActivity : ComponentActivity() {
             val appTheme by NightShieldManager.appTheme.collectAsState()
             val isPro    by ProGate.isPro.collectAsState()
 
-            // In-app review: request after 7 days + ≥20 min total filter time
-            LaunchedEffect(Unit) {
-                val days  = OverlayHelpers.daysSinceFirstLaunch(applicationContext)
-                val mins  = UsageTracker.weeklyTotalMinutes(applicationContext)
-                val shown = prefs.getBoolean("review_requested", false)
-                if (!shown && days >= 7 && mins >= 20) {
-                    val manager = ReviewManagerFactory.create(this@MainActivity)
-                    manager.requestReviewFlow().addOnSuccessListener { info ->
-                        manager.launchReviewFlow(this@MainActivity, info)
-                        prefs.edit { putBoolean("review_requested", true) }
-                    }
+            // Review breakpoint: a completed purchase (isPro flipping on while the UI is up).
+            // The other value moments are reported through NightShieldActions.onReviewMoment.
+            var wasPro by remember { mutableStateOf(isPro) }
+            LaunchedEffect(isPro) {
+                if (isPro && !wasPro) {
+                    ReviewPrompter.onMoment(this@MainActivity, ReviewPrompter.Moment.PURCHASED)
                 }
+                wasPro = isPro
             }
 
             NightShieldTheme(theme = appTheme) {
@@ -239,6 +266,8 @@ class MainActivity : ComponentActivity() {
                             onEnableAutoSchedule = { enableAutoSchedule() },
                             onDisableAutoSchedule = { disableAutoSchedule() },
                             onRefreshLocation = { refreshLocation() },
+                            ensureNotificationPermission = { ensureNotificationPermission() },
+                            onReviewMoment = { ReviewPrompter.onMoment(this@MainActivity, it) },
                         )
                     }
 
@@ -248,6 +277,8 @@ class MainActivity : ComponentActivity() {
                         allowShake           = NightShieldManager.allowShake.collectAsState().value,
                         isPro                = isPro,
                         triggerUpgradePrompt = triggerUpgrade,
+                        upgradeRequested     = upgradeRequested.value,
+                        onUpgradeRequestHandled = { upgradeRequested.value = false },
                         actions              = actions,
                     )
                 }
@@ -255,10 +286,26 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        consumeUpgradeRequest(intent)
+    }
+
+    private fun consumeUpgradeRequest(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_SHOW_UPGRADE, false) == true) {
+            upgradeRequested.value = true
+            intent.removeExtra(EXTRA_SHOW_UPGRADE)
+        }
+    }
+
     private fun launchOverlays() {
         // The service flips the durable flag + widget; optimistically mirror the flow for
         // instant button feedback. The service confirms (or self-corrects if it can't start).
-        if (NightShieldController.activate(this)) NightShieldManager.setFilterActive(true)
+        if (!NightShieldController.activate(this)) return
+        NightShieldManager.setFilterActive(true)
+        // The filter's notification carries the off switch (and Pro intensity controls).
+        ensureNotificationPermission()
+        ReviewPrompter.onMoment(this, ReviewPrompter.Moment.FILTER_ON)
     }
 
     private fun stopOverlays() {
@@ -291,15 +338,9 @@ class MainActivity : ComponentActivity() {
         val running = active && hasOverlayPermission.value
         NightShieldManager.setFilterActive(running)
 
-        // Dark mode auto-sync: auto-enable filter when system switches to dark mode
-        if (NightShieldManager.darkModeAutoSync.value &&
-            !running &&
-            hasOverlayPermission.value
-        ) {
-            val nightFlags = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
-            if (nightFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES) {
-                launchOverlays()
-            }
+        // PRO — follow system dark mode.
+        if (!running && DarkModeSync.maybeActivate(this, resources.configuration)) {
+            NightShieldManager.setFilterActive(true)
         }
 
         // Re-verify entitlement with Play on every foreground. Without this, both Pro status and
@@ -314,13 +355,29 @@ class MainActivity : ComponentActivity() {
         // in-app composable detector was removed. Deduped with the service/monitor via tryShakeToggle.
         syncInAppShake()
 
-        // Don't show an app-open ad on the FIRST resume (the cold/intentional open) — that just
-        // blacks out the screen the user is trying to reach. Only show on later returns to the app.
-        if (hasResumedOnce) AppOpenAdManager.showAdIfAvailable(this)
-        hasResumedOnce = true
     }
 
-    private var hasResumedOnce = false
+    /**
+     * Epoch ms of the last time the activity left the screen; 0 until it has (so the cold,
+     * intentional open never gets an ad that blacks out the screen the user is trying to reach).
+     */
+    private var stoppedAtMs = 0L
+
+    override fun onStart() {
+        super.onStart()
+        // App-open ad only on a genuine return after some time away. It used to run on every
+        // onResume, so it fired the moment a system dialog closed (notification / location
+        // permission) and on coming back from granting overlay or battery settings — exactly
+        // when the user is mid-task in the app.
+        if (stoppedAtMs > 0 && System.currentTimeMillis() - stoppedAtMs >= APP_OPEN_AD_MIN_AWAY_MS) {
+            AppOpenAdManager.showAdIfAvailable(this)
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        stoppedAtMs = System.currentTimeMillis()
+    }
 
     override fun onPause() {
         super.onPause()
@@ -361,11 +418,19 @@ class MainActivity : ComponentActivity() {
         OverlayHelpers.saveAdaptiveIntensity(this, NightShieldManager.adaptiveIntensity.value && ProGate.isPro.value)
         OverlayHelpers.saveAppTheme(this, NightShieldManager.appTheme.value)
         OverlayHelpers.saveWidgetStyle(this, NightShieldManager.widgetStyle.value)
-        OverlayHelpers.saveSchedules(this, NightShieldManager.schedules.value)
         OverlayHelpers.saveAppConfigs(this, NightShieldManager.appFilterConfigs.value)
         OverlayHelpers.saveProfiles(this, NightShieldManager.profiles.value)
         OverlayHelpers.saveEyeBreakEnabled(this, NightShieldManager.eyeBreakEnabled.value)
         OverlayHelpers.saveDarkModeSync(this, NightShieldManager.darkModeAutoSync.value)
-        AlarmHelpers.scheduleAll(this, NightShieldManager.schedules.value)
+        // Schedules were previously armed uncapped here, so a refunded user kept every alarm.
+        AlarmHelpers.commit(this, NightShieldManager.schedules.value)
+    }
+
+    companion object {
+        /** Boolean extra: open straight to the Pro upgrade screen. */
+        const val EXTRA_SHOW_UPGRADE = "show_upgrade"
+
+        /** Minimum time away before a return counts as a new visit for the app-open ad. */
+        private const val APP_OPEN_AD_MIN_AWAY_MS = 60_000L
     }
 }
