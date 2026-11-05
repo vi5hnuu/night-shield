@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.vi5hnu.nightshield.AdConsentManager
 import com.vi5hnu.nightshield.BuildConfig
+import com.vi5hnu.nightshield.LegalLinks
 import com.vi5hnu.nightshield.NightShieldManager
 import com.vi5hnu.nightshield.OverlayHelpers
 import com.vi5hnu.nightshield.NightShieldWidgetProvider
@@ -219,6 +220,37 @@ fun SettingsScreen(
                 icon = R.drawable.ic_shield_24,
                 title = stringResource(R.string.app_name),
                 subtitle = "Version ${BuildConfig.VERSION_NAME}",
+            )
+            SettingsDivider()
+            // Legal pages open in the browser (hosted on the shared legal site, see LegalLinks).
+            SettingRow(
+                icon = R.drawable.ic_visibility_24,
+                title = "Privacy policy",
+                subtitle = "What the app stores and what it shares",
+                onClick = { LegalLinks.openPrivacyPolicy(context) },
+                trailing = {
+                    Icon(
+                        painterResource(R.drawable.ic_chevron_right_24),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(IconSize.md),
+                    )
+                },
+            )
+            SettingsDivider()
+            SettingRow(
+                icon = R.drawable.ic_info_24,
+                title = "Terms of service",
+                subtitle = "The terms for using Night Shield and Pro",
+                onClick = { LegalLinks.openTermsOfService(context) },
+                trailing = {
+                    Icon(
+                        painterResource(R.drawable.ic_chevron_right_24),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(IconSize.md),
+                    )
+                },
             )
         }
 
