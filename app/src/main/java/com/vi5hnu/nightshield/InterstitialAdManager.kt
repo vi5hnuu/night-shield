@@ -44,6 +44,8 @@ object InterstitialAdManager {
     private var isLoading = false
 
     fun loadAd(context: Context) {
+        // Never request an ad before UMP consent allows it (see AdConsentManager).
+        if (!AdConsentManager.adsReady.value) return
         if (ProGate.isPaid.value || isLoading || interstitialAd != null) return
         isLoading = true
         InterstitialAd.load(
