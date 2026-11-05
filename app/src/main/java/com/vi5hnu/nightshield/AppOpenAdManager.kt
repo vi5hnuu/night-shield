@@ -19,6 +19,8 @@ object AppOpenAdManager {
 
     /** Load a fresh App Open ad. Safe to call multiple times — ignores if already loading/loaded. */
     fun loadAd(context: Context) {
+        // Never request an ad before UMP consent allows it (see AdConsentManager).
+        if (!AdConsentManager.adsReady.value) return
         if (isLoadingAd || isAdAvailable()) return
         isLoadingAd = true
         AppOpenAd.load(

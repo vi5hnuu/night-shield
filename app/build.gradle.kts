@@ -112,6 +112,8 @@ dependencies {
 
     // AdMob
     implementation(libs.play.services.ads)
+    // UMP: GDPR/UK consent before ads are requested (AdConsentManager)
+    implementation(libs.user.messaging.platform)
 
     // Google Play Billing
     implementation(libs.billing.ktx)

@@ -40,6 +40,8 @@ object RewardedAdManager {
     val availability: StateFlow<Availability> = _availability.asStateFlow()
 
     fun loadAd(context: Context) {
+        // Never request an ad before UMP consent allows it (see AdConsentManager).
+        if (!AdConsentManager.adsReady.value) return
         if (ProGate.isPaid.value || isLoading || rewardedAd != null) return
         if (!isOnline(context)) {
             _availability.value = Availability.UNAVAILABLE

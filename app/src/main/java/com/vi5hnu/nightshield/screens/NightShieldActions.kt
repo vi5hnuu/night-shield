@@ -31,4 +31,6 @@ data class NightShieldActions(
     val onReviewMoment: (ReviewPrompter.Moment) -> Unit = {},
     /** Shows the rewarded ad that unlocks the 24-hour Pro trial. */
     val onWatchAdForTrial: () -> Unit = {},
+    /** Opens the UMP privacy options form so the user can change their ad consent. */
+    val onShowAdPrivacyOptions: () -> Unit = {},
 )

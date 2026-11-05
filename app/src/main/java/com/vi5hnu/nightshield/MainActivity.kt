@@ -15,7 +15,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
-import com.google.android.gms.ads.MobileAds
 import com.vi5hnu.nightshield.screens.NightShieldActions
 import com.vi5hnu.nightshield.screens.NightShieldApp
 import com.vi5hnu.nightshield.screens.OnboardingScreen
@@ -143,11 +142,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         consumeUpgradeRequest(intent)
 
-        MobileAds.initialize(this)
-        AppOpenAdManager.loadAd(this)
-        InterstitialAdManager.loadAd(this)
-        // Preloaded so "watch an ad for a Pro trial" plays on the first tap.
-        RewardedAdManager.loadAd(this)
+        // Ads start only once UMP consent allows it; the form shows here where the law needs one.
+        // Loads use the application context: consent can resolve after this activity is gone.
+        AdConsentManager.gatherConsent(this) {
+            AppOpenAdManager.loadAd(applicationContext)
+            InterstitialAdManager.loadAd(applicationContext)
+            // Preloaded so "watch an ad for a Pro trial" plays on the first tap.
+            RewardedAdManager.loadAd(applicationContext)
+        }
 
         // ── First-launch tracking ─────────────────────────────────────────────
         OverlayHelpers.ensureFirstLaunchRecorded(this)
@@ -273,6 +275,9 @@ class MainActivity : ComponentActivity() {
                             ensureNotificationPermission = { ensureNotificationPermission() },
                             onReviewMoment = { ReviewPrompter.onMoment(this@MainActivity, it) },
                             onWatchAdForTrial = { watchAdForTrial() },
+                            onShowAdPrivacyOptions = {
+                                AdConsentManager.showPrivacyOptionsForm(this@MainActivity)
+                            },
                         )
                     }
 

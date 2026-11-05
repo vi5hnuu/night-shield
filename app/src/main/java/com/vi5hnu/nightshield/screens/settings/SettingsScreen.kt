@@ -36,6 +36,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.vi5hnu.nightshield.AdConsentManager
 import com.vi5hnu.nightshield.BuildConfig
 import com.vi5hnu.nightshield.NightShieldManager
 import com.vi5hnu.nightshield.OverlayHelpers
@@ -177,7 +178,26 @@ fun SettingsScreen(
 
         // ── About ─────────────────────────────────────────────────────────────
         SectionHeader("About")
+        // Only where UMP says users must be able to revisit their ad consent (EEA, UK, ...).
+        val showAdPrivacy by AdConsentManager.privacyOptionsRequired.collectAsState()
         SettingsGroup {
+            if (showAdPrivacy) {
+                SettingRow(
+                    icon = R.drawable.ic_lock_24,
+                    title = "Ad privacy choices",
+                    subtitle = "Change how ads use your data",
+                    onClick = actions.onShowAdPrivacyOptions,
+                    trailing = {
+                        Icon(
+                            painterResource(R.drawable.ic_chevron_right_24),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(IconSize.md),
+                        )
+                    },
+                )
+                SettingsDivider()
+            }
             // Opens the store listing directly: the in-app review card is subject to a Play quota
             // and may show nothing, which would make a button look broken.
             SettingRow(

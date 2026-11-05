@@ -38,6 +38,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +53,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
 import com.vi5hnu.nightshield.AdConfig
+import com.vi5hnu.nightshield.AdConsentManager
 import com.vi5hnu.nightshield.R
 import com.vi5hnu.nightshield.screens.apps.AppsScreen
 import com.vi5hnu.nightshield.screens.filter.FilterScreen
@@ -206,7 +208,7 @@ fun NightShieldApp(
             Column(modifier = if (useRail) Modifier.navigationBarsPadding() else Modifier) {
                 // Banner ad (free users only) sits above the nav bar so it never covers content
                 // or the navigation itself.
-                if (!isPaid) BannerAd()
+                if (!isPaid) BannerAd()  // renders nothing until consent allows ads
                 if (!useRail) NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer,
                 ) {
@@ -327,6 +329,9 @@ fun NightShieldApp(
  */
 @Composable
 private fun BannerAd() {
+    // No request until UMP consent allows ads (see AdConsentManager).
+    val adsReady by AdConsentManager.adsReady.collectAsState()
+    if (!adsReady) return
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         val widthDp = maxWidth.value.toInt()
         key(widthDp) {
