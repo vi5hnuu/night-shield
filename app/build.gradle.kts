@@ -36,8 +36,8 @@ android {
         applicationId = "com.vi5hnu.nightshield"
         minSdk = 29
         targetSdk = 36
-        versionCode = 13
-        versionName = "3.4.0"
+        versionCode = 14
+        versionName = "3.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
