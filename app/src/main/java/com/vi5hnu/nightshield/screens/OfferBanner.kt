@@ -62,7 +62,8 @@ fun OfferBanner(isPaid: Boolean, onSeeOffer: () -> Unit, modifier: Modifier = Mo
         Column {
             Spacer(Modifier.height(Spacing.md))
             InfoBanner(
-                title = "${o.discountLabel} on Night Shield Pro",
+                // A discount under 1% has no label; never print "null".
+                title = o.discountLabel?.let { "$it on Night Shield Pro" } ?: "Night Shield Pro is on offer",
                 text = buildString {
                     append("${o.formattedPrice} instead of ${o.fullFormattedPrice} · one payment, no ads, ever.")
                     endsText?.let { append(" $it.") }
