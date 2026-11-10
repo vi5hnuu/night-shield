@@ -1,12 +1,21 @@
 package com.vi5hnu.nightshield
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import androidx.core.content.edit
+import androidx.core.net.toUri
 import com.android.billingclient.api.*
+import com.vi5hnu.nightshield.billing.OfferInput
+import com.vi5hnu.nightshield.billing.OfferSelector
+import com.vi5hnu.nightshield.billing.ProOffer
+import com.vi5hnu.nightshield.billing.PurchaseVerifier
+import java.security.MessageDigest
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,14 +41,40 @@ import kotlinx.coroutines.launch
  * flicker while Play is being consulted, and it is excluded from backup (see
  * res/xml/backup_rules.xml) so it cannot travel to a device that never paid.
  *
+ * Security: every purchase is checked by [PurchaseVerifier] (Play's RSA signature + our package)
+ * before it grants anything or is acknowledged. The cache stores that signed receipt rather than a
+ * bare boolean and re-verifies it on read, so flipping a value in billing_prefs.xml unlocks nothing.
+ *
  * Product in Play Console:
  *   ID: night_shield_pro  |  Type: One-time
+ *
+ * Offers: discount offers configured in Play Console are only returned by
+ * `getOneTimePurchaseOfferDetailsList()` and only charged when their offer token is passed to the
+ * billing flow. [OfferSelector] picks which one to advertise; [offer] carries it to the paywall and
+ * [purchase] launches with that same token.
  */
 object BillingManager {
 
     const val PRODUCT_ID = "night_shield_pro"
     private const val PREFS = "billing_prefs"
-    private const val KEY_IS_PRO = "is_pro"
+
+    /** Play's documented promo-code deep link (a code can be appended as `?code=`). */
+    private const val REDEEM_URL = "https://play.google.com/redeem"
+    private const val PLAY_STORE_PACKAGE = "com.android.vending"
+
+    /**
+     * Pre-receipt cache (app versions before signature verification). Honoured only until this
+     * version's first successful Play check replaces it, so an existing buyer who updates while
+     * offline keeps Pro. It is then deleted and never read again.
+     */
+    private const val KEY_LEGACY_IS_PRO = "is_pro"
+
+    /** Play-signed purchase JSON + signature of the owned Pro purchase; absent when not Pro. */
+    private const val KEY_RECEIPT_JSON = "receipt_json"
+    private const val KEY_RECEIPT_SIG = "receipt_sig"
+
+    /** Random per-install id, hashed into obfuscatedAccountId. Never derived from personal data. */
+    private const val KEY_INSTALL_ID = "install_id"
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var billingClient: BillingClient? = null
@@ -63,13 +98,15 @@ object BillingManager {
     private var purchaseInFlight = false
 
     /**
-     * Play's localised price for [PRODUCT_ID] (e.g. "₹50.00", "$0.99), or null until Play answers.
+     * The offer the paywall shows and checkout uses: Play's localised price, plus the struck-through
+     * full price, savings label and end time when a discount offer is live. Null until Play answers.
      *
-     * The paywall used to print a hardcoded price, which is wrong in every other currency and
-     * silently stale after a price change. Callers must handle null rather than invent a number.
+     * The paywall used to print a hardcoded price, and later only the base price, so discount
+     * offers set up in Play Console were never shown or charged. Callers must handle null rather
+     * than invent a number.
      */
-    private val _formattedPrice = MutableStateFlow<String?>(null)
-    val formattedPrice: StateFlow<String?> = _formattedPrice.asStateFlow()
+    private val _offer = MutableStateFlow<ProOffer?>(null)
+    val offer: StateFlow<ProOffer?> = _offer.asStateFlow()
 
     // ── Public API ────────────────────────────────────────────────────────────
 
@@ -83,7 +120,7 @@ object BillingManager {
         // Guard against multiple calls (service + activity in same process) to avoid leaking BillingClient
         if (billingClient != null) return
 
-        if (context.billingPrefs().getBoolean(KEY_IS_PRO, false)) ProGate.grant()
+        if (isProCached(context)) ProGate.grant()
 
         billingClient = BillingClient.newBuilder(context.applicationContext)
             .setListener { result, purchases -> onPurchasesUpdated(result, purchases) }
@@ -113,13 +150,21 @@ object BillingManager {
             client == null -> init(context)
             client.isReady -> {
                 queryPurchases(context)
-                queryPrice()
+                queryOffer()
             }
             // The initial connection never completed — typically the app was launched offline.
             // Retry it; its callback re-runs both queries. Querying a not-ready client here would
             // only produce a failed reconnection.
             else -> startConnection(context)
         }
+    }
+
+    /**
+     * Re-fetch the advertised offer only. The paywall calls this when it opens and when the offer
+     * it shows reaches its end time, so an expired discount never stays on screen.
+     */
+    fun refreshOffer() {
+        if (billingClient?.isReady == true) queryOffer() else refresh()
     }
 
     /**
@@ -144,12 +189,16 @@ object BillingManager {
                 return@queryProductDetailsAsync
             }
             // PBL 8+: the callback delivers a QueryProductDetailsResult (fetched list + unfetched
-            // products) instead of a bare List<ProductDetails>.
+            // products) instead of a bare List<ProductDetails>. ProductDetails is re-queried here
+            // rather than cached: Google warns stale objects make launchBillingFlow fail.
             val details = productDetailsResult.productDetailsList.firstOrNull()
-            if (details == null) {
+            val selected = details?.let { selectOffer(it) }
+            if (details == null || selected == null) {
                 toast(activity, "Night Shield Pro isn't available on this account right now.")
                 return@queryProductDetailsAsync
             }
+            // Publish what is about to be charged so the paywall matches the Play sheet.
+            _offer.value = selected
 
             purchaseInFlight = true
             val launch = client.launchBillingFlow(
@@ -159,9 +208,15 @@ object BillingManager {
                         listOf(
                             BillingFlowParams.ProductDetailsParams.newBuilder()
                                 .setProductDetails(details)
+                                // Without the token Play charges the base price, discount or not.
+                                .apply { selected.offerToken?.let { setOfferToken(it) } }
                                 .build()
                         )
                     )
+                    // Lets Google's fraud detection spot one install buying across many accounts.
+                    .setObfuscatedAccountId(obfuscatedAccountId(activity))
+                    // setIsOfferPersonalized is deliberately not set: the EU disclosure applies
+                    // only to prices personalised by automated decision-making, which we never do.
                     .build()
             )
             // The sheet never opened, so no onPurchasesUpdated will arrive to clear the flag.
@@ -176,8 +231,25 @@ object BillingManager {
      * widget update, for instance — reading the in-memory gate would report "not Pro" for a paying
      * user. This reads the cache Play itself last wrote.
      */
-    fun isProCached(context: Context): Boolean =
-        context.billingPrefs().getBoolean(KEY_IS_PRO, false)
+    fun isProCached(context: Context): Boolean {
+        val prefs = context.billingPrefs()
+        val json = prefs.getString(KEY_RECEIPT_JSON, null)
+        val sig = prefs.getString(KEY_RECEIPT_SIG, null)
+        if (json != null && sig != null) {
+            // Widgets, receivers and start-up all ask; one RSA check per distinct receipt is enough.
+            if (sig == verifiedSignature) return true
+            return PurchaseVerifier.isGenuine(json, sig, context.packageName)
+                .also { if (it) verifiedSignature = sig }
+        }
+        return prefs.getBoolean(KEY_LEGACY_IS_PRO, false)
+    }
+
+    /**
+     * Signature of the receipt [isProCached] last verified in this process. Only an in-memory
+     * shortcut: the stored JSON can't be swapped without also changing its signature, and anything
+     * that changes the signature is verified afresh.
+     */
+    @Volatile private var verifiedSignature: String? = null
 
     /**
      * Re-query Play purchases — used by the "Restore purchase" button.
@@ -185,6 +257,30 @@ object BillingManager {
      */
     fun restore(context: Context) {
         queryPurchases(context.applicationContext, announceResult = true)
+    }
+
+    /**
+     * Opens Play's "Redeem code" screen for Play Console promo codes.
+     *
+     * Redemption happens entirely inside Play; nothing is passed back. When the user returns,
+     * [MainActivity.onResume] → [refresh] → [queryPurchases] finds the new purchase, verifies and
+     * acknowledges it, and announces the unlock. Codes can also be redeemed in the purchase sheet
+     * itself (payment method → Redeem code), which arrives through [onPurchasesUpdated] as usual.
+     */
+    fun openRedeem(context: Context) {
+        val intent = Intent(Intent.ACTION_VIEW, REDEEM_URL.toUri())
+            .setPackage(PLAY_STORE_PACKAGE)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            // No Play Store app (rare on a device that installed us from Play): let any handler try.
+            try {
+                context.startActivity(intent.setPackage(null))
+            } catch (_: ActivityNotFoundException) {
+                toast(context, "Open the Google Play Store and choose Redeem code.")
+            }
+        }
     }
 
     // ── Internal ──────────────────────────────────────────────────────────────
@@ -206,6 +302,19 @@ object BillingManager {
             // the entitlement is applied instead of leaving the user staring at the paywall.
             BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED ->
                 queryPurchases(context, announceResult = true)
+
+            // The offer shown ended, hit its purchase limit, or isn't sold in the user's (changed)
+            // Play country. Play re-checks eligibility at launch; refresh so the paywall shows
+            // what can actually be bought now.
+            BillingClient.BillingResponseCode.ITEM_UNAVAILABLE -> {
+                val wasDiscount = _offer.value?.isDiscounted == true
+                queryOffer()
+                toast(
+                    context,
+                    if (wasDiscount) "That offer is no longer available. Showing the current price."
+                    else "Night Shield Pro isn't available on this account right now.",
+                )
+            }
 
             // The user backed out of the sheet deliberately; saying anything would be noise.
             BillingClient.BillingResponseCode.USER_CANCELED -> Unit
@@ -230,7 +339,7 @@ object BillingManager {
                 if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                     scope.launch {
                         queryPurchases(context)
-                        queryPrice()
+                        queryOffer()
                     }
                 }
             }
@@ -244,17 +353,44 @@ object BillingManager {
         })
     }
 
-    /** Fetches the localised price so the paywall can show Play's own number. */
-    private fun queryPrice() {
+    /** Fetches the eligible offers so the paywall can show Play's own numbers. */
+    private fun queryOffer() {
         val client = billingClient?.takeIf { it.isReady } ?: return
         client.queryProductDetailsAsync(productDetailsParams()) { result, productDetailsResult ->
+            // A failed query keeps the last known offer rather than blanking the price.
             if (result.responseCode != BillingClient.BillingResponseCode.OK) return@queryProductDetailsAsync
-            _formattedPrice.value = productDetailsResult.productDetailsList
-                .firstOrNull()
-                ?.oneTimePurchaseOfferDetails
-                ?.formattedPrice
+            _offer.value = productDetailsResult.productDetailsList.firstOrNull()?.let { selectOffer(it) }
         }
     }
+
+    /**
+     * Every offer this user is eligible for, mapped to [OfferInput] and handed to [OfferSelector].
+     *
+     * `getOneTimePurchaseOfferDetailsList()` is the only source of discount offers; the singular
+     * `getOneTimePurchaseOfferDetails()` returns just the backwards-compatible base option, which is
+     * why offers were previously invisible. It is kept as a fallback for a product with no list.
+     */
+    private fun selectOffer(details: ProductDetails): ProOffer? {
+        val offers = details.oneTimePurchaseOfferDetailsList
+            ?.takeIf { it.isNotEmpty() }
+            ?: listOfNotNull(details.oneTimePurchaseOfferDetails)
+        return OfferSelector.select(offers.map { it.toOfferInput() })
+    }
+
+    private fun ProductDetails.OneTimePurchaseOfferDetails.toOfferInput() = OfferInput(
+        offerToken = offerToken,
+        offerId = offerId,
+        purchaseOptionId = purchaseOptionId,
+        formattedPrice = formattedPrice,
+        priceMicros = priceAmountMicros,
+        currencyCode = priceCurrencyCode,
+        fullPriceMicros = fullPriceMicros,
+        percentageDiscount = discountDisplayInfo?.percentageDiscount,
+        formattedDiscountAmount = discountDisplayInfo?.discountAmount?.formattedDiscountAmount,
+        validUntilMillis = validTimeWindow?.endTimeMillis,
+        isRental = rentalDetails != null,
+        isPreorder = preorderDetails != null,
+    )
 
     private fun productDetailsParams() = QueryProductDetailsParams.newBuilder()
         .setProductList(
@@ -298,27 +434,33 @@ object BillingManager {
                 return@queryPurchasesAsync
             }
 
-            val isPurchased = purchases.any {
-                PRODUCT_ID in it.products && it.purchaseState == Purchase.PurchaseState.PURCHASED
+            // Only a Play-signed purchase counts; a forged one is treated as no purchase at all.
+            val owned = purchases.firstOrNull {
+                PRODUCT_ID in it.products &&
+                    it.purchaseState == Purchase.PurchaseState.PURCHASED &&
+                    isGenuine(context, it)
             }
-            if (isPurchased) {
-                val wasPro = context.billingPrefs().getBoolean(KEY_IS_PRO, false)
+            if (owned != null) {
+                val wasPro = isProCached(context)
                 ProGate.grant()
-                setProCache(context, true)
-                purchases.filter { !it.isAcknowledged }
-                    .forEach { acknowledgePurchase(it) }
-                if (announceResult) {
-                    toast(
+                setProCache(context, owned)
+                if (!owned.isAcknowledged) acknowledgePurchase(owned)
+                when {
+                    announceResult -> toast(
                         context,
                         if (wasPro) "Pro is active on this account." else "Pro restored. Enjoy!",
                     )
+                    // Unlocked outside the purchase sheet — a promo code redeemed in the Play Store,
+                    // or a slow payment that cleared while the app was closed. Granting silently
+                    // left people unsure whether the code had worked.
+                    !wasPro -> toast(context, "Pro unlocked. Thank you!")
                 }
             } else {
                 // No valid purchase for this Google account: never purchased, refunded, revoked,
                 // or the device is signed into a different account than the one that bought it.
-                val wasPro = context.billingPrefs().getBoolean(KEY_IS_PRO, false)
+                val wasPro = isProCached(context)
                 ProGate.revoke()
-                setProCache(context, false)
+                setProCache(context, null)
                 // Reset Pro-only settings so they don't persist without entitlement.
                 // A slow payment (UPI, cash) that hasn't cleared is not "no purchase" — telling
                 // the user nothing was found would invite a second, duplicate payment attempt.
@@ -355,8 +497,15 @@ object BillingManager {
         }
         if (purchase.purchaseState != Purchase.PurchaseState.PURCHASED) return
 
+        // Not signed by Play: grant nothing and do NOT acknowledge, so Play refunds it after three
+        // days if it was somehow real. A genuine one is re-delivered by the next queryPurchases.
+        if (!isGenuine(context, purchase)) {
+            toast(context, "Purchase couldn't be verified with Google Play. Nothing has been unlocked.")
+            return
+        }
+
         ProGate.grant()
-        setProCache(context, true)
+        setProCache(context, purchase)
         // Play auto-refunds unacknowledged purchases after three days, so this must not be skipped.
         if (!purchase.isAcknowledged) acknowledgePurchase(purchase)
     }
@@ -369,16 +518,46 @@ object BillingManager {
         ) { /* Failures retry on the next queryPurchases, well inside Play's 3-day window. */ }
     }
 
-    private fun setProCache(context: Context, isPro: Boolean) {
+    private fun isGenuine(context: Context, purchase: Purchase): Boolean =
+        PurchaseVerifier.isGenuine(purchase.originalJson, purchase.signature, context.packageName)
+
+    /**
+     * Stores the verified Pro [purchase] as a signed receipt, or clears it when null. Always drops
+     * the legacy boolean: once Play has answered, that answer replaces it for good.
+     */
+    private fun setProCache(context: Context, purchase: Purchase?) {
         val prefs = context.billingPrefs()
-        val changed = prefs.getBoolean(KEY_IS_PRO, false) != isPro
-        prefs.edit { putBoolean(KEY_IS_PRO, isPro) }
+        val isPro = purchase != null
+        val changed = isProCached(context) != isPro
+        prefs.edit {
+            remove(KEY_LEGACY_IS_PRO)
+            if (purchase != null) {
+                putString(KEY_RECEIPT_JSON, purchase.originalJson)
+                putString(KEY_RECEIPT_SIG, purchase.signature)
+            } else {
+                remove(KEY_RECEIPT_JSON)
+                remove(KEY_RECEIPT_SIG)
+            }
+        }
         // Widgets render Pro-only controls from this cache, so they must redraw when it flips —
         // otherwise a new buyer's intensity widget stays locked until the next unrelated update.
         if (changed) {
             NightShieldWidgetProvider.updateWidget(context)
             IntensityWidgetProvider.updateAll(context)
         }
+    }
+
+    /**
+     * SHA-256 of a random per-install UUID (64 hex chars, Play's maximum). Play asks for an
+     * identifier that can't be traced back to the person, so this deliberately carries no device or
+     * account data. It lives in billing_prefs, which is excluded from backup.
+     */
+    private fun obfuscatedAccountId(context: Context): String {
+        val prefs = context.billingPrefs()
+        val id = prefs.getString(KEY_INSTALL_ID, null)
+            ?: UUID.randomUUID().toString().also { prefs.edit { putString(KEY_INSTALL_ID, it) } }
+        return MessageDigest.getInstance("SHA-256").digest(id.toByteArray())
+            .joinToString("") { "%02x".format(it) }
     }
 
     /** Billing callbacks arrive off the main thread; Toast requires the main looper. */

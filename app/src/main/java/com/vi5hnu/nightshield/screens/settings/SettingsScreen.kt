@@ -42,6 +42,7 @@ import com.vi5hnu.nightshield.LegalLinks
 import com.vi5hnu.nightshield.NightShieldManager
 import com.vi5hnu.nightshield.OverlayHelpers
 import com.vi5hnu.nightshield.NightShieldWidgetProvider
+import com.vi5hnu.nightshield.BillingManager
 import com.vi5hnu.nightshield.R
 import com.vi5hnu.nightshield.ReviewPrompter
 import com.vi5hnu.nightshield.screens.NightShieldActions
@@ -199,6 +200,24 @@ fun SettingsScreen(
                 )
                 SettingsDivider()
             }
+            // Play Console promo codes; hidden once Pro is bought since there is nothing to unlock.
+            if (!isPaid) {
+                SettingRow(
+                    icon = R.drawable.ic_redeem_24,
+                    title = "Redeem promo code",
+                    subtitle = "Unlock Pro with a Google Play code",
+                    onClick = actions.onRedeemCode,
+                    trailing = {
+                        Icon(
+                            painterResource(R.drawable.ic_chevron_right_24),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(IconSize.md),
+                        )
+                    },
+                )
+                SettingsDivider()
+            }
             // Opens the store listing directly: the in-app review card is subject to a Play quota
             // and may show nothing, which would make a button look broken.
             SettingRow(
@@ -311,10 +330,19 @@ private fun UpgradeCard(onShowUpgrade: () -> Unit) {
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
+                // A live Play discount offer leads the card; otherwise the usual value pitch.
+                // "Limited time" only when Play gave an end date — never invented urgency.
+                val offer = BillingManager.offer.collectAsState().value
+                val discount = offer?.discountLabel
                 Text(
-                    "No ads, auto sunset, bedtime routine and more — one payment",
+                    when {
+                        discount == null -> "No ads, auto sunset, bedtime routine and more — one payment"
+                        offer.endsAtMillis != null -> "$discount for a limited time — no ads, auto sunset and more"
+                        else -> "$discount — no ads, auto sunset and more"
+                    },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (discount != null) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Icon(

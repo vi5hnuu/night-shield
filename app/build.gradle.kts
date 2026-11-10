@@ -13,6 +13,28 @@ val localProps = Properties().apply {
     if (f.exists()) load(f.inputStream())
 }
 
+/**
+ * Play Console → Monetize with Play → Monetization setup → Licensing: the app's public RSA key.
+ * It is public (not a secret), but lives in local.properties beside the signing config so every
+ * build machine supplies it deliberately. PurchaseVerifier checks each purchase signature with it.
+ */
+val playLicenseKey = (localProps["PLAY_LICENSE_KEY"] as? String)?.trim().orEmpty()
+
+// A release build without the key would reject every purchase (PurchaseVerifier fails closed), so
+// it fails here instead of shipping. Hooked to preReleaseBuild, which every route into the release
+// variant runs (bundleRelease, assembleRelease, plain `assemble`/`build`, the Studio wizard) —
+// matching on typed task names missed `assemble`. Debug builds may omit the key.
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    doFirst {
+        if (playLicenseKey.isEmpty()) {
+            throw GradleException(
+                "PLAY_LICENSE_KEY is missing from local.properties. Copy it from Play Console → " +
+                    "Monetize with Play → Monetization setup → Licensing."
+            )
+        }
+    }
+}
+
 android {
     namespace = "com.vi5hnu.nightshield"
     compileSdk = 36
@@ -40,6 +62,8 @@ android {
         versionName = "3.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "PLAY_LICENSE_KEY", "\"$playLicenseKey\"")
     }
 
     buildTypes {

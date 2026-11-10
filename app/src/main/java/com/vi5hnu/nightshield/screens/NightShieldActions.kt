@@ -20,6 +20,8 @@ data class NightShieldActions(
     val onUpgradePromptShown: () -> Unit = {},
     val onPurchase: () -> Unit = {},
     val onRestorePurchase: () -> Unit = {},
+    /** Opens Play's promo-code redeem screen. */
+    val onRedeemCode: () -> Unit = {},
     val onExportSettings: () -> Unit = {},
     val onImportSettings: () -> Unit = {},
     val onEnableAutoSchedule: () -> Unit = {},
