@@ -1,6 +1,7 @@
 package com.vi5hnu.nightshield.billing
 
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -29,7 +30,9 @@ object OfferCopy {
         val left = end - nowMillis
         if (left <= 0) return null
         if (left >= COUNTDOWN_WINDOW) {
-            return "Offer ends ${SimpleDateFormat("d MMM", locale).format(Date(end))}"
+            // The year is added only when it differs, so "25 Nov" stays short but never ambiguous.
+            val pattern = if (yearOf(end) == yearOf(nowMillis)) "d MMM" else "d MMM yyyy"
+            return "Offer ends ${SimpleDateFormat(pattern, locale).format(Date(end))}"
         }
         val days = left / DAY
         val hours = (left % DAY) / HOUR
@@ -42,6 +45,9 @@ object OfferCopy {
         }
         return "Offer ends in $span"
     }
+
+    private fun yearOf(millis: Long): Int =
+        Calendar.getInstance().apply { timeInMillis = millis }.get(Calendar.YEAR)
 
     /**
      * Screen-reader text for the price block. Without it TalkBack reads the struck-through full

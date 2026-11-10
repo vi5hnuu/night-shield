@@ -331,10 +331,15 @@ private fun UpgradeCard(onShowUpgrade: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 // A live Play discount offer leads the card; otherwise the usual value pitch.
-                val discount = BillingManager.offer.collectAsState().value?.discountLabel
+                // "Limited time" only when Play gave an end date — never invented urgency.
+                val offer = BillingManager.offer.collectAsState().value
+                val discount = offer?.discountLabel
                 Text(
-                    discount?.let { "$it for a limited time — no ads, auto sunset and more" }
-                        ?: "No ads, auto sunset, bedtime routine and more — one payment",
+                    when {
+                        discount == null -> "No ads, auto sunset, bedtime routine and more — one payment"
+                        offer.endsAtMillis != null -> "$discount for a limited time — no ads, auto sunset and more"
+                        else -> "$discount — no ads, auto sunset and more"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = if (discount != null) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurfaceVariant,

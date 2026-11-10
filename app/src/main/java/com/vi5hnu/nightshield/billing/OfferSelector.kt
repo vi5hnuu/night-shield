@@ -21,6 +21,8 @@ import java.util.Locale
  */
 data class ProOffer(
     val offerToken: String?,
+    /** Play Console offer id (null for the base price); stable across queries, unlike the token. */
+    val offerId: String?,
     val formattedPrice: String,
     val priceMicros: Long,
     val currencyCode: String,
@@ -48,7 +50,6 @@ data class OfferInput(
     val fullPriceMicros: Long?,
     val percentageDiscount: Int?,
     val formattedDiscountAmount: String?,
-    val validFromMillis: Long?,
     val validUntilMillis: Long?,
     val isRental: Boolean,
     val isPreorder: Boolean,
@@ -60,8 +61,10 @@ data class OfferInput(
  * Play already returns only offers this user is eligible for (country, purchase limit, schedule),
  * so the job here is choosing among them and describing the choice honestly:
  *  - Rentals and pre-orders are skipped: Pro is a permanent, available-now unlock.
- *  - Offers outside their valid window are skipped (defensive; Play filters these too, but the
- *    paywall may outlive the query that returned them).
+ *  - Offer dates are NOT re-checked against the device clock. Play has already applied them at
+ *    query time with its own clock; re-filtering with a phone clock that runs ahead would hide a
+ *    live discount and charge the user full price. The end time is only used for display and to
+ *    re-query when it passes.
  *  - The cheapest remaining offer wins. On a tie the base offer wins, so a "discount" that saves
  *    nothing is never presented as one.
  *  - The struck-through price is always Play's own number, never invented.
@@ -71,8 +74,8 @@ data class OfferInput(
  */
 object OfferSelector {
 
-    fun select(offers: List<OfferInput>, nowMillis: Long): ProOffer? {
-        val candidates = offers.filter { it.isBuyableNow(nowMillis) }
+    fun select(offers: List<OfferInput>): ProOffer? {
+        val candidates = offers.filter { !it.isRental && !it.isPreorder }
         val chosen = candidates.minWithOrNull(
             compareBy<OfferInput> { it.priceMicros }.thenBy { if (it.offerId == null) 0 else 1 }
         ) ?: return null
@@ -80,6 +83,7 @@ object OfferSelector {
         val isDiscount = chosen.fullPriceMicros != null && chosen.fullPriceMicros > chosen.priceMicros
         return ProOffer(
             offerToken = chosen.offerToken,
+            offerId = chosen.offerId,
             formattedPrice = chosen.formattedPrice,
             priceMicros = chosen.priceMicros,
             currencyCode = chosen.currencyCode,
@@ -88,11 +92,6 @@ object OfferSelector {
             endsAtMillis = chosen.validUntilMillis,
         )
     }
-
-    private fun OfferInput.isBuyableNow(now: Long): Boolean =
-        !isRental && !isPreorder &&
-            (validFromMillis == null || validFromMillis <= now) &&
-            (validUntilMillis == null || validUntilMillis > now)
 
     /**
      * Prefers the base offer's Play-formatted string (exact symbol placement and rounding Play uses

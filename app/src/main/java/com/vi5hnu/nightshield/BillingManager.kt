@@ -236,10 +236,20 @@ object BillingManager {
         val json = prefs.getString(KEY_RECEIPT_JSON, null)
         val sig = prefs.getString(KEY_RECEIPT_SIG, null)
         if (json != null && sig != null) {
+            // Widgets, receivers and start-up all ask; one RSA check per distinct receipt is enough.
+            if (sig == verifiedSignature) return true
             return PurchaseVerifier.isGenuine(json, sig, context.packageName)
+                .also { if (it) verifiedSignature = sig }
         }
         return prefs.getBoolean(KEY_LEGACY_IS_PRO, false)
     }
+
+    /**
+     * Signature of the receipt [isProCached] last verified in this process. Only an in-memory
+     * shortcut: the stored JSON can't be swapped without also changing its signature, and anything
+     * that changes the signature is verified afresh.
+     */
+    @Volatile private var verifiedSignature: String? = null
 
     /**
      * Re-query Play purchases — used by the "Restore purchase" button.
@@ -297,8 +307,13 @@ object BillingManager {
             // Play country. Play re-checks eligibility at launch; refresh so the paywall shows
             // what can actually be bought now.
             BillingClient.BillingResponseCode.ITEM_UNAVAILABLE -> {
+                val wasDiscount = _offer.value?.isDiscounted == true
                 queryOffer()
-                toast(context, "That offer is no longer available. Showing the current price.")
+                toast(
+                    context,
+                    if (wasDiscount) "That offer is no longer available. Showing the current price."
+                    else "Night Shield Pro isn't available on this account right now.",
+                )
             }
 
             // The user backed out of the sheet deliberately; saying anything would be noise.
@@ -359,7 +374,7 @@ object BillingManager {
         val offers = details.oneTimePurchaseOfferDetailsList
             ?.takeIf { it.isNotEmpty() }
             ?: listOfNotNull(details.oneTimePurchaseOfferDetails)
-        return OfferSelector.select(offers.map { it.toOfferInput() }, System.currentTimeMillis())
+        return OfferSelector.select(offers.map { it.toOfferInput() })
     }
 
     private fun ProductDetails.OneTimePurchaseOfferDetails.toOfferInput() = OfferInput(
@@ -372,7 +387,6 @@ object BillingManager {
         fullPriceMicros = fullPriceMicros,
         percentageDiscount = discountDisplayInfo?.percentageDiscount,
         formattedDiscountAmount = discountDisplayInfo?.discountAmount?.formattedDiscountAmount,
-        validFromMillis = validTimeWindow?.startTimeMillis,
         validUntilMillis = validTimeWindow?.endTimeMillis,
         isRental = rentalDetails != null,
         isPreorder = preorderDetails != null,

@@ -20,15 +20,19 @@ val localProps = Properties().apply {
  */
 val playLicenseKey = (localProps["PLAY_LICENSE_KEY"] as? String)?.trim().orEmpty()
 
-// A store build that skipped signature verification would trust any forged purchase, so a release
-// build without the key fails here instead of shipping silently. Debug builds may omit it.
-if (playLicenseKey.isEmpty() &&
-    gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
-) {
-    throw GradleException(
-        "PLAY_LICENSE_KEY is missing from local.properties. Copy it from Play Console → " +
-            "Monetize with Play → Monetization setup → Licensing."
-    )
+// A release build without the key would reject every purchase (PurchaseVerifier fails closed), so
+// it fails here instead of shipping. Hooked to preReleaseBuild, which every route into the release
+// variant runs (bundleRelease, assembleRelease, plain `assemble`/`build`, the Studio wizard) —
+// matching on typed task names missed `assemble`. Debug builds may omit the key.
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    doFirst {
+        if (playLicenseKey.isEmpty()) {
+            throw GradleException(
+                "PLAY_LICENSE_KEY is missing from local.properties. Copy it from Play Console → " +
+                    "Monetize with Play → Monetization setup → Licensing."
+            )
+        }
+    }
 }
 
 android {
