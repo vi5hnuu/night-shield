@@ -69,6 +69,7 @@ import com.vi5hnu.nightshield.NightShieldManager
 import com.vi5hnu.nightshield.OverlayHelpers
 import com.vi5hnu.nightshield.R
 import com.vi5hnu.nightshield.screens.NightShieldActions
+import com.vi5hnu.nightshield.screens.OfferBanner
 import com.vi5hnu.nightshield.ui.components.InfoBanner
 import com.vi5hnu.nightshield.ui.components.InfoBannerAction
 import com.vi5hnu.nightshield.ui.components.ProBadge
@@ -95,6 +96,8 @@ fun FilterScreen(
     areServicesActive: Boolean,
     allowShake: Boolean,
     isPro: Boolean,
+    /** Bought Pro (not just a trial); hides the offer banner. */
+    isPaid: Boolean,
     actions: NightShieldActions,
     onShowUpgrade: () -> Unit,
 ) {
@@ -131,6 +134,10 @@ fun FilterScreen(
             onActivate = actions.launchOverlays,
             onStop = actions.stopOverlays,
         )
+
+        // Below the hero, not above it: visible without scrolling, but never between the user and
+        // the filter's primary on/off action.
+        OfferBanner(isPaid = isPaid, onSeeOffer = onShowUpgrade)
 
         Spacer(Modifier.height(Spacing.xxl))
 

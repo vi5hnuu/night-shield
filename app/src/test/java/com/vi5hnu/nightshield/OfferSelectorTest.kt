@@ -130,3 +130,18 @@ class OfferCopyTest {
         assertFalse(OfferCopy.endsText(start + 10L * 24 * h, start - 20L * 24 * h, java.util.Locale.UK)!!.contains("202"))
     }
 }
+
+class OfferBannerStateTest {
+
+    private fun offer(id: String?, ends: Long?) = com.vi5hnu.nightshield.billing.ProOffer(
+        offerToken = "t", offerId = id, formattedPrice = "₹29", priceMicros = 29_000_000L,
+        currencyCode = "INR", fullFormattedPrice = "₹49", discountLabel = "Save 40%", endsAtMillis = ends,
+    )
+
+    @Test fun sameOfferNewWindow_getsNewKey() {
+        val key = com.vi5hnu.nightshield.billing.OfferBannerState::keyOf
+        assertEquals(key(offer("diwali", 1L)), key(offer("diwali", 1L)))
+        assertFalse(key(offer("diwali", 1L)) == key(offer("diwali", 2L)))
+        assertFalse(key(offer("diwali", null)) == key(offer("newyear", null)))
+    }
+}

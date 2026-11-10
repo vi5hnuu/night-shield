@@ -293,6 +293,7 @@ fun NightShieldApp(
                             areServicesActive = areServicesActive,
                             allowShake = allowShake,
                             isPro = isPro,
+                            isPaid = isPaid,
                             actions = actions,
                             onShowUpgrade = showUpgrade,
                         )

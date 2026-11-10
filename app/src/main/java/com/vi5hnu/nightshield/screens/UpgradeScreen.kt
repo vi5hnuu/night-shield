@@ -446,29 +446,6 @@ private fun ctaText(offer: ProOffer?) = buildAnnotatedString {
 }
 
 /**
- * Offer deadline text, re-evaluated every minute. When the shown offer's end time passes, Play is
- * asked again so the paywall falls back to whatever is buyable now instead of a dead price.
- */
-@Composable
-private fun rememberOfferEndsText(offer: ProOffer?): String? {
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    // Fresh eligibility each time the paywall opens (offers can start or end while backgrounded).
-    LaunchedEffect(Unit) { BillingManager.refreshOffer() }
-    LaunchedEffect(offer?.endsAtMillis) {
-        val end = offer?.endsAtMillis ?: return@LaunchedEffect
-        while (true) {
-            now = System.currentTimeMillis()
-            if (now >= end) {
-                BillingManager.refreshOffer()
-                return@LaunchedEffect
-            }
-            delay(minOf(60_000L, end - now))
-        }
-    }
-    return OfferCopy.endsText(offer?.endsAtMillis, now)
-}
-
-/**
  * Price block. A discount follows the common store convention: savings chip, the offer price,
  * Play's real full price struck through, and a deadline only when Play gives one.
  */
