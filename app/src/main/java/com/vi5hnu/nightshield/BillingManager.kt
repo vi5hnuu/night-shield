@@ -7,6 +7,9 @@ import android.os.Looper
 import android.widget.Toast
 import androidx.core.content.edit
 import com.android.billingclient.api.*
+import com.vi5hnu.nightshield.billing.OfferInput
+import com.vi5hnu.nightshield.billing.OfferSelector
+import com.vi5hnu.nightshield.billing.ProOffer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,6 +37,11 @@ import kotlinx.coroutines.launch
  *
  * Product in Play Console:
  *   ID: night_shield_pro  |  Type: One-time
+ *
+ * Offers: discount offers configured in Play Console are only returned by
+ * `getOneTimePurchaseOfferDetailsList()` and only charged when their offer token is passed to the
+ * billing flow. [OfferSelector] picks which one to advertise; [offer] carries it to the paywall and
+ * [purchase] launches with that same token.
  */
 object BillingManager {
 
@@ -63,13 +71,15 @@ object BillingManager {
     private var purchaseInFlight = false
 
     /**
-     * Play's localised price for [PRODUCT_ID] (e.g. "₹50.00", "$0.99), or null until Play answers.
+     * The offer the paywall shows and checkout uses: Play's localised price, plus the struck-through
+     * full price, savings label and end time when a discount offer is live. Null until Play answers.
      *
-     * The paywall used to print a hardcoded price, which is wrong in every other currency and
-     * silently stale after a price change. Callers must handle null rather than invent a number.
+     * The paywall used to print a hardcoded price, and later only the base price, so discount
+     * offers set up in Play Console were never shown or charged. Callers must handle null rather
+     * than invent a number.
      */
-    private val _formattedPrice = MutableStateFlow<String?>(null)
-    val formattedPrice: StateFlow<String?> = _formattedPrice.asStateFlow()
+    private val _offer = MutableStateFlow<ProOffer?>(null)
+    val offer: StateFlow<ProOffer?> = _offer.asStateFlow()
 
     // ── Public API ────────────────────────────────────────────────────────────
 
@@ -113,13 +123,21 @@ object BillingManager {
             client == null -> init(context)
             client.isReady -> {
                 queryPurchases(context)
-                queryPrice()
+                queryOffer()
             }
             // The initial connection never completed — typically the app was launched offline.
             // Retry it; its callback re-runs both queries. Querying a not-ready client here would
             // only produce a failed reconnection.
             else -> startConnection(context)
         }
+    }
+
+    /**
+     * Re-fetch the advertised offer only. The paywall calls this when it opens and when the offer
+     * it shows reaches its end time, so an expired discount never stays on screen.
+     */
+    fun refreshOffer() {
+        if (billingClient?.isReady == true) queryOffer() else refresh()
     }
 
     /**
@@ -144,12 +162,16 @@ object BillingManager {
                 return@queryProductDetailsAsync
             }
             // PBL 8+: the callback delivers a QueryProductDetailsResult (fetched list + unfetched
-            // products) instead of a bare List<ProductDetails>.
+            // products) instead of a bare List<ProductDetails>. ProductDetails is re-queried here
+            // rather than cached: Google warns stale objects make launchBillingFlow fail.
             val details = productDetailsResult.productDetailsList.firstOrNull()
-            if (details == null) {
+            val selected = details?.let { selectOffer(it) }
+            if (details == null || selected == null) {
                 toast(activity, "Night Shield Pro isn't available on this account right now.")
                 return@queryProductDetailsAsync
             }
+            // Publish what is about to be charged so the paywall matches the Play sheet.
+            _offer.value = selected
 
             purchaseInFlight = true
             val launch = client.launchBillingFlow(
@@ -159,9 +181,13 @@ object BillingManager {
                         listOf(
                             BillingFlowParams.ProductDetailsParams.newBuilder()
                                 .setProductDetails(details)
+                                // Without the token Play charges the base price, discount or not.
+                                .apply { selected.offerToken?.let { setOfferToken(it) } }
                                 .build()
                         )
                     )
+                    // setIsOfferPersonalized is deliberately not set: the EU disclosure applies
+                    // only to prices personalised by automated decision-making, which we never do.
                     .build()
             )
             // The sheet never opened, so no onPurchasesUpdated will arrive to clear the flag.
@@ -207,6 +233,14 @@ object BillingManager {
             BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED ->
                 queryPurchases(context, announceResult = true)
 
+            // The offer shown ended, hit its purchase limit, or isn't sold in the user's (changed)
+            // Play country. Play re-checks eligibility at launch; refresh so the paywall shows
+            // what can actually be bought now.
+            BillingClient.BillingResponseCode.ITEM_UNAVAILABLE -> {
+                queryOffer()
+                toast(context, "That offer is no longer available. Showing the current price.")
+            }
+
             // The user backed out of the sheet deliberately; saying anything would be noise.
             BillingClient.BillingResponseCode.USER_CANCELED -> Unit
 
@@ -230,7 +264,7 @@ object BillingManager {
                 if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                     scope.launch {
                         queryPurchases(context)
-                        queryPrice()
+                        queryOffer()
                     }
                 }
             }
@@ -244,17 +278,45 @@ object BillingManager {
         })
     }
 
-    /** Fetches the localised price so the paywall can show Play's own number. */
-    private fun queryPrice() {
+    /** Fetches the eligible offers so the paywall can show Play's own numbers. */
+    private fun queryOffer() {
         val client = billingClient?.takeIf { it.isReady } ?: return
         client.queryProductDetailsAsync(productDetailsParams()) { result, productDetailsResult ->
+            // A failed query keeps the last known offer rather than blanking the price.
             if (result.responseCode != BillingClient.BillingResponseCode.OK) return@queryProductDetailsAsync
-            _formattedPrice.value = productDetailsResult.productDetailsList
-                .firstOrNull()
-                ?.oneTimePurchaseOfferDetails
-                ?.formattedPrice
+            _offer.value = productDetailsResult.productDetailsList.firstOrNull()?.let { selectOffer(it) }
         }
     }
+
+    /**
+     * Every offer this user is eligible for, mapped to [OfferInput] and handed to [OfferSelector].
+     *
+     * `getOneTimePurchaseOfferDetailsList()` is the only source of discount offers; the singular
+     * `getOneTimePurchaseOfferDetails()` returns just the backwards-compatible base option, which is
+     * why offers were previously invisible. It is kept as a fallback for a product with no list.
+     */
+    private fun selectOffer(details: ProductDetails): ProOffer? {
+        val offers = details.oneTimePurchaseOfferDetailsList
+            ?.takeIf { it.isNotEmpty() }
+            ?: listOfNotNull(details.oneTimePurchaseOfferDetails)
+        return OfferSelector.select(offers.map { it.toOfferInput() }, System.currentTimeMillis())
+    }
+
+    private fun ProductDetails.OneTimePurchaseOfferDetails.toOfferInput() = OfferInput(
+        offerToken = offerToken,
+        offerId = offerId,
+        purchaseOptionId = purchaseOptionId,
+        formattedPrice = formattedPrice,
+        priceMicros = priceAmountMicros,
+        currencyCode = priceCurrencyCode,
+        fullPriceMicros = fullPriceMicros,
+        percentageDiscount = discountDisplayInfo?.percentageDiscount,
+        formattedDiscountAmount = discountDisplayInfo?.discountAmount?.formattedDiscountAmount,
+        validFromMillis = validTimeWindow?.startTimeMillis,
+        validUntilMillis = validTimeWindow?.endTimeMillis,
+        isRental = rentalDetails != null,
+        isPreorder = preorderDetails != null,
+    )
 
     private fun productDetailsParams() = QueryProductDetailsParams.newBuilder()
         .setProductList(

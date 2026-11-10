@@ -1,6 +1,7 @@
 package com.vi5hnu.nightshield.screens
 
 import androidx.annotation.DrawableRes
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,7 +43,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.vi5hnu.nightshield.BillingManager
 import com.vi5hnu.nightshield.FreeTier
@@ -50,6 +57,8 @@ import com.vi5hnu.nightshield.ProGate
 import com.vi5hnu.nightshield.ProTrial
 import com.vi5hnu.nightshield.R
 import com.vi5hnu.nightshield.RewardedAdManager
+import com.vi5hnu.nightshield.billing.OfferCopy
+import com.vi5hnu.nightshield.billing.ProOffer
 import com.vi5hnu.nightshield.ui.components.readableWidth
 import com.vi5hnu.nightshield.ui.theme.IconSize
 import com.vi5hnu.nightshield.ui.theme.Radius
@@ -130,7 +139,8 @@ fun UpgradeScreen(
     onWatchAdForTrial: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val storePrice by BillingManager.formattedPrice.collectAsState()
+    val offer by BillingManager.offer.collectAsState()
+    val offerEndsText = rememberOfferEndsText(offer)
     val trialRemainingMs = rememberTrialRemainingMs()
     val adAvailability by RewardedAdManager.availability.collectAsState()
 
@@ -171,7 +181,7 @@ fun UpgradeScreen(
                     Spacer(Modifier.height(Spacing.xxl))
                     ComparisonTable()
                     Spacer(Modifier.height(Spacing.xxl))
-                    PriceCard(price = storePrice)
+                    PriceCard(offer = offer, endsText = offerEndsText)
                     Spacer(Modifier.height(Spacing.lg))
                 }
             } else {
@@ -213,8 +223,13 @@ fun UpgradeScreen(
                         ),
                     ) {
                         Text(
-                            text = storePrice?.let { "Unlock Pro · $it" } ?: "Unlock Pro",
+                            text = ctaText(offer),
                             style = MaterialTheme.typography.labelLarge,
+                            modifier = offer?.let { o ->
+                                Modifier.clearAndSetSemantics {
+                                    contentDescription = "Unlock Pro, ${OfferCopy.priceDescription(o)}"
+                                }
+                            } ?: Modifier,
                         )
                     }
                     TrialOffer(
@@ -405,8 +420,49 @@ private fun CompareCell(value: String, modifier: Modifier, emphasised: Boolean) 
     }
 }
 
+/**
+ * "Unlock Pro · ₹29 ₹49" with the full price struck through when a discount is live, so the saving
+ * is visible on the button itself, not only in the card above it.
+ */
+private fun ctaText(offer: ProOffer?) = buildAnnotatedString {
+    append("Unlock Pro")
+    if (offer == null) return@buildAnnotatedString
+    append(" · ${offer.formattedPrice}")
+    offer.fullFormattedPrice?.let { full ->
+        append("  ")
+        withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { append(full) }
+    }
+}
+
+/**
+ * Offer deadline text, re-evaluated every minute. When the shown offer's end time passes, Play is
+ * asked again so the paywall falls back to whatever is buyable now instead of a dead price.
+ */
 @Composable
-private fun PriceCard(price: String?) {
+private fun rememberOfferEndsText(offer: ProOffer?): String? {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    // Fresh eligibility each time the paywall opens (offers can start or end while backgrounded).
+    LaunchedEffect(Unit) { BillingManager.refreshOffer() }
+    LaunchedEffect(offer?.endsAtMillis) {
+        val end = offer?.endsAtMillis ?: return@LaunchedEffect
+        while (true) {
+            now = System.currentTimeMillis()
+            if (now >= end) {
+                BillingManager.refreshOffer()
+                return@LaunchedEffect
+            }
+            delay(minOf(60_000L, end - now))
+        }
+    }
+    return OfferCopy.endsText(offer?.endsAtMillis, now)
+}
+
+/**
+ * Price block. A discount follows the common store convention: savings chip, the offer price,
+ * Play's real full price struck through, and a deadline only when Play gives one.
+ */
+@Composable
+private fun PriceCard(offer: ProOffer?, endsText: String?) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(Radius.lg),
@@ -419,18 +475,65 @@ private fun PriceCard(price: String?) {
                 .padding(Spacing.xl),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(
-                text = price ?: PRICE_PENDING,
-                style = if (price != null) MaterialTheme.typography.displaySmall
-                else MaterialTheme.typography.titleMedium,
-            )
+            offer?.discountLabel?.let { label ->
+                DiscountChip(label)
+                Spacer(Modifier.height(Spacing.sm))
+            }
+            if (offer == null) {
+                Text(text = PRICE_PENDING, style = MaterialTheme.typography.titleMedium)
+            } else {
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    modifier = Modifier.clearAndSetSemantics {
+                        contentDescription = OfferCopy.priceDescription(offer)
+                    },
+                ) {
+                    Text(text = offer.formattedPrice, style = MaterialTheme.typography.displaySmall)
+                    offer.fullFormattedPrice?.let { full ->
+                        Text(
+                            text = full,
+                            style = MaterialTheme.typography.titleMedium,
+                            textDecoration = TextDecoration.LineThrough,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
+                            modifier = Modifier.padding(bottom = Spacing.xs),
+                        )
+                    }
+                }
+            }
             Spacer(Modifier.height(Spacing.xs))
             Text(
                 "Pay once · Unlock forever · No expiry",
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center,
             )
+            endsText?.let {
+                Spacer(Modifier.height(Spacing.xs))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
+    }
+}
+
+/** Accent-outlined savings tag — calm, InfoBanner-style, never a filled colour block. */
+@Composable
+private fun DiscountChip(label: String) {
+    Surface(
+        shape = RoundedCornerShape(Radius.sm),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+        )
     }
 }
 

@@ -42,6 +42,7 @@ import com.vi5hnu.nightshield.LegalLinks
 import com.vi5hnu.nightshield.NightShieldManager
 import com.vi5hnu.nightshield.OverlayHelpers
 import com.vi5hnu.nightshield.NightShieldWidgetProvider
+import com.vi5hnu.nightshield.BillingManager
 import com.vi5hnu.nightshield.R
 import com.vi5hnu.nightshield.ReviewPrompter
 import com.vi5hnu.nightshield.screens.NightShieldActions
@@ -311,10 +312,14 @@ private fun UpgradeCard(onShowUpgrade: () -> Unit) {
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
+                // A live Play discount offer leads the card; otherwise the usual value pitch.
+                val discount = BillingManager.offer.collectAsState().value?.discountLabel
                 Text(
-                    "No ads, auto sunset, bedtime routine and more — one payment",
+                    discount?.let { "$it for a limited time — no ads, auto sunset and more" }
+                        ?: "No ads, auto sunset, bedtime routine and more — one payment",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (discount != null) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Icon(
