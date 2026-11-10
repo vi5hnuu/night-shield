@@ -10,6 +10,9 @@ import com.android.billingclient.api.*
 import com.vi5hnu.nightshield.billing.OfferInput
 import com.vi5hnu.nightshield.billing.OfferSelector
 import com.vi5hnu.nightshield.billing.ProOffer
+import com.vi5hnu.nightshield.billing.PurchaseVerifier
+import java.security.MessageDigest
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,6 +38,10 @@ import kotlinx.coroutines.launch
  * flicker while Play is being consulted, and it is excluded from backup (see
  * res/xml/backup_rules.xml) so it cannot travel to a device that never paid.
  *
+ * Security: every purchase is checked by [PurchaseVerifier] (Play's RSA signature + our package)
+ * before it grants anything or is acknowledged. The cache stores that signed receipt rather than a
+ * bare boolean and re-verifies it on read, so flipping a value in billing_prefs.xml unlocks nothing.
+ *
  * Product in Play Console:
  *   ID: night_shield_pro  |  Type: One-time
  *
@@ -47,7 +54,20 @@ object BillingManager {
 
     const val PRODUCT_ID = "night_shield_pro"
     private const val PREFS = "billing_prefs"
-    private const val KEY_IS_PRO = "is_pro"
+
+    /**
+     * Pre-receipt cache (app versions before signature verification). Honoured only until this
+     * version's first successful Play check replaces it, so an existing buyer who updates while
+     * offline keeps Pro. It is then deleted and never read again.
+     */
+    private const val KEY_LEGACY_IS_PRO = "is_pro"
+
+    /** Play-signed purchase JSON + signature of the owned Pro purchase; absent when not Pro. */
+    private const val KEY_RECEIPT_JSON = "receipt_json"
+    private const val KEY_RECEIPT_SIG = "receipt_sig"
+
+    /** Random per-install id, hashed into obfuscatedAccountId. Never derived from personal data. */
+    private const val KEY_INSTALL_ID = "install_id"
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var billingClient: BillingClient? = null
@@ -93,7 +113,7 @@ object BillingManager {
         // Guard against multiple calls (service + activity in same process) to avoid leaking BillingClient
         if (billingClient != null) return
 
-        if (context.billingPrefs().getBoolean(KEY_IS_PRO, false)) ProGate.grant()
+        if (isProCached(context)) ProGate.grant()
 
         billingClient = BillingClient.newBuilder(context.applicationContext)
             .setListener { result, purchases -> onPurchasesUpdated(result, purchases) }
@@ -186,6 +206,8 @@ object BillingManager {
                                 .build()
                         )
                     )
+                    // Lets Google's fraud detection spot one install buying across many accounts.
+                    .setObfuscatedAccountId(obfuscatedAccountId(activity))
                     // setIsOfferPersonalized is deliberately not set: the EU disclosure applies
                     // only to prices personalised by automated decision-making, which we never do.
                     .build()
@@ -202,8 +224,15 @@ object BillingManager {
      * widget update, for instance — reading the in-memory gate would report "not Pro" for a paying
      * user. This reads the cache Play itself last wrote.
      */
-    fun isProCached(context: Context): Boolean =
-        context.billingPrefs().getBoolean(KEY_IS_PRO, false)
+    fun isProCached(context: Context): Boolean {
+        val prefs = context.billingPrefs()
+        val json = prefs.getString(KEY_RECEIPT_JSON, null)
+        val sig = prefs.getString(KEY_RECEIPT_SIG, null)
+        if (json != null && sig != null) {
+            return PurchaseVerifier.isGenuine(json, sig, context.packageName)
+        }
+        return prefs.getBoolean(KEY_LEGACY_IS_PRO, false)
+    }
 
     /**
      * Re-query Play purchases — used by the "Restore purchase" button.
@@ -360,15 +389,17 @@ object BillingManager {
                 return@queryPurchasesAsync
             }
 
-            val isPurchased = purchases.any {
-                PRODUCT_ID in it.products && it.purchaseState == Purchase.PurchaseState.PURCHASED
+            // Only a Play-signed purchase counts; a forged one is treated as no purchase at all.
+            val owned = purchases.firstOrNull {
+                PRODUCT_ID in it.products &&
+                    it.purchaseState == Purchase.PurchaseState.PURCHASED &&
+                    isGenuine(context, it)
             }
-            if (isPurchased) {
-                val wasPro = context.billingPrefs().getBoolean(KEY_IS_PRO, false)
+            if (owned != null) {
+                val wasPro = isProCached(context)
                 ProGate.grant()
-                setProCache(context, true)
-                purchases.filter { !it.isAcknowledged }
-                    .forEach { acknowledgePurchase(it) }
+                setProCache(context, owned)
+                if (!owned.isAcknowledged) acknowledgePurchase(owned)
                 if (announceResult) {
                     toast(
                         context,
@@ -378,9 +409,9 @@ object BillingManager {
             } else {
                 // No valid purchase for this Google account: never purchased, refunded, revoked,
                 // or the device is signed into a different account than the one that bought it.
-                val wasPro = context.billingPrefs().getBoolean(KEY_IS_PRO, false)
+                val wasPro = isProCached(context)
                 ProGate.revoke()
-                setProCache(context, false)
+                setProCache(context, null)
                 // Reset Pro-only settings so they don't persist without entitlement.
                 // A slow payment (UPI, cash) that hasn't cleared is not "no purchase" — telling
                 // the user nothing was found would invite a second, duplicate payment attempt.
@@ -417,8 +448,15 @@ object BillingManager {
         }
         if (purchase.purchaseState != Purchase.PurchaseState.PURCHASED) return
 
+        // Not signed by Play: grant nothing and do NOT acknowledge, so Play refunds it after three
+        // days if it was somehow real. A genuine one is re-delivered by the next queryPurchases.
+        if (!isGenuine(context, purchase)) {
+            toast(context, "Purchase couldn't be verified with Google Play. Nothing has been unlocked.")
+            return
+        }
+
         ProGate.grant()
-        setProCache(context, true)
+        setProCache(context, purchase)
         // Play auto-refunds unacknowledged purchases after three days, so this must not be skipped.
         if (!purchase.isAcknowledged) acknowledgePurchase(purchase)
     }
@@ -431,16 +469,46 @@ object BillingManager {
         ) { /* Failures retry on the next queryPurchases, well inside Play's 3-day window. */ }
     }
 
-    private fun setProCache(context: Context, isPro: Boolean) {
+    private fun isGenuine(context: Context, purchase: Purchase): Boolean =
+        PurchaseVerifier.isGenuine(purchase.originalJson, purchase.signature, context.packageName)
+
+    /**
+     * Stores the verified Pro [purchase] as a signed receipt, or clears it when null. Always drops
+     * the legacy boolean: once Play has answered, that answer replaces it for good.
+     */
+    private fun setProCache(context: Context, purchase: Purchase?) {
         val prefs = context.billingPrefs()
-        val changed = prefs.getBoolean(KEY_IS_PRO, false) != isPro
-        prefs.edit { putBoolean(KEY_IS_PRO, isPro) }
+        val isPro = purchase != null
+        val changed = isProCached(context) != isPro
+        prefs.edit {
+            remove(KEY_LEGACY_IS_PRO)
+            if (purchase != null) {
+                putString(KEY_RECEIPT_JSON, purchase.originalJson)
+                putString(KEY_RECEIPT_SIG, purchase.signature)
+            } else {
+                remove(KEY_RECEIPT_JSON)
+                remove(KEY_RECEIPT_SIG)
+            }
+        }
         // Widgets render Pro-only controls from this cache, so they must redraw when it flips —
         // otherwise a new buyer's intensity widget stays locked until the next unrelated update.
         if (changed) {
             NightShieldWidgetProvider.updateWidget(context)
             IntensityWidgetProvider.updateAll(context)
         }
+    }
+
+    /**
+     * SHA-256 of a random per-install UUID (64 hex chars, Play's maximum). Play asks for an
+     * identifier that can't be traced back to the person, so this deliberately carries no device or
+     * account data. It lives in billing_prefs, which is excluded from backup.
+     */
+    private fun obfuscatedAccountId(context: Context): String {
+        val prefs = context.billingPrefs()
+        val id = prefs.getString(KEY_INSTALL_ID, null)
+            ?: UUID.randomUUID().toString().also { prefs.edit { putString(KEY_INSTALL_ID, it) } }
+        return MessageDigest.getInstance("SHA-256").digest(id.toByteArray())
+            .joinToString("") { "%02x".format(it) }
     }
 
     /** Billing callbacks arrive off the main thread; Toast requires the main looper. */
