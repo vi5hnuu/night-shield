@@ -267,6 +267,7 @@ class MainActivity : ComponentActivity() {
                             onUpgradePromptShown = { OverlayHelpers.markUpgradePromptShown(applicationContext) },
                             onPurchase = { BillingManager.purchase(this@MainActivity) },
                             onRestorePurchase = { BillingManager.restore(this@MainActivity) },
+                            onRedeemCode = { BillingManager.openRedeem(this@MainActivity) },
                             onExportSettings = { createDocumentLauncher.launch("nightshield_backup.json") },
                             onImportSettings = { openDocumentLauncher.launch(arrayOf("application/json")) },
                             onEnableAutoSchedule = { enableAutoSchedule() },

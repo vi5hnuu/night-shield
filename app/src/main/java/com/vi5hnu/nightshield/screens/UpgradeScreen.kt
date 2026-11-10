@@ -136,6 +136,7 @@ fun UpgradeScreen(
     isPro: Boolean,
     onPurchase: () -> Unit,
     onRestorePurchase: () -> Unit,
+    onRedeemCode: () -> Unit,
     onWatchAdForTrial: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -237,12 +238,22 @@ fun UpgradeScreen(
                         adAvailability = adAvailability,
                         onWatchAd = onWatchAdForTrial,
                     )
-                    TextButton(onClick = onRestorePurchase) {
-                        Text(
-                            "Restore purchase",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    // Secondary account actions, kept quiet so the purchase stays the focus.
+                    Row(horizontalArrangement = Arrangement.Center) {
+                        TextButton(onClick = onRestorePurchase) {
+                            Text(
+                                "Restore purchase",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(onClick = onRedeemCode) {
+                            Text(
+                                "Redeem code",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }

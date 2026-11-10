@@ -200,6 +200,24 @@ fun SettingsScreen(
                 )
                 SettingsDivider()
             }
+            // Play Console promo codes; hidden once Pro is bought since there is nothing to unlock.
+            if (!isPaid) {
+                SettingRow(
+                    icon = R.drawable.ic_redeem_24,
+                    title = "Redeem promo code",
+                    subtitle = "Unlock Pro with a Google Play code",
+                    onClick = actions.onRedeemCode,
+                    trailing = {
+                        Icon(
+                            painterResource(R.drawable.ic_chevron_right_24),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(IconSize.md),
+                        )
+                    },
+                )
+                SettingsDivider()
+            }
             // Opens the store listing directly: the in-app review card is subject to a Play quota
             // and may show nothing, which would make a button look broken.
             SettingRow(

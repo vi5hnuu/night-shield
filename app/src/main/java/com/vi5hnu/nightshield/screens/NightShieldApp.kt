@@ -160,6 +160,7 @@ fun NightShieldApp(
             isPro = isPaid,
             onPurchase = actions.onPurchase,
             onRestorePurchase = actions.onRestorePurchase,
+            onRedeemCode = actions.onRedeemCode,
             onWatchAdForTrial = actions.onWatchAdForTrial,
             onDismiss = { showUpgradeScreen = false },
         )

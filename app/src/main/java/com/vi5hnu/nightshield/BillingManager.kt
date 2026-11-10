@@ -1,11 +1,14 @@
 package com.vi5hnu.nightshield
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import androidx.core.content.edit
+import androidx.core.net.toUri
 import com.android.billingclient.api.*
 import com.vi5hnu.nightshield.billing.OfferInput
 import com.vi5hnu.nightshield.billing.OfferSelector
@@ -54,6 +57,10 @@ object BillingManager {
 
     const val PRODUCT_ID = "night_shield_pro"
     private const val PREFS = "billing_prefs"
+
+    /** Play's documented promo-code deep link (a code can be appended as `?code=`). */
+    private const val REDEEM_URL = "https://play.google.com/redeem"
+    private const val PLAY_STORE_PACKAGE = "com.android.vending"
 
     /**
      * Pre-receipt cache (app versions before signature verification). Honoured only until this
@@ -242,6 +249,30 @@ object BillingManager {
         queryPurchases(context.applicationContext, announceResult = true)
     }
 
+    /**
+     * Opens Play's "Redeem code" screen for Play Console promo codes.
+     *
+     * Redemption happens entirely inside Play; nothing is passed back. When the user returns,
+     * [MainActivity.onResume] → [refresh] → [queryPurchases] finds the new purchase, verifies and
+     * acknowledges it, and announces the unlock. Codes can also be redeemed in the purchase sheet
+     * itself (payment method → Redeem code), which arrives through [onPurchasesUpdated] as usual.
+     */
+    fun openRedeem(context: Context) {
+        val intent = Intent(Intent.ACTION_VIEW, REDEEM_URL.toUri())
+            .setPackage(PLAY_STORE_PACKAGE)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            // No Play Store app (rare on a device that installed us from Play): let any handler try.
+            try {
+                context.startActivity(intent.setPackage(null))
+            } catch (_: ActivityNotFoundException) {
+                toast(context, "Open the Google Play Store and choose Redeem code.")
+            }
+        }
+    }
+
     // ── Internal ──────────────────────────────────────────────────────────────
 
     /**
@@ -400,11 +431,15 @@ object BillingManager {
                 ProGate.grant()
                 setProCache(context, owned)
                 if (!owned.isAcknowledged) acknowledgePurchase(owned)
-                if (announceResult) {
-                    toast(
+                when {
+                    announceResult -> toast(
                         context,
                         if (wasPro) "Pro is active on this account." else "Pro restored. Enjoy!",
                     )
+                    // Unlocked outside the purchase sheet — a promo code redeemed in the Play Store,
+                    // or a slow payment that cleared while the app was closed. Granting silently
+                    // left people unsure whether the code had worked.
+                    !wasPro -> toast(context, "Pro unlocked. Thank you!")
                 }
             } else {
                 // No valid purchase for this Google account: never purchased, refunded, revoked,
