@@ -41,6 +41,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
@@ -61,6 +63,10 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     private var fadeJob: Job? = null
     private var eyeBreakJob: Job? = null
     private var shakeHelper: ShakeHelper? = null
+    /** True once onStartCommand has run, i.e. the overlay is allowed on screen at all. */
+    private var started = false
+    /** This session was started as a Sunrise alarm; kept so a re-shown overlay continues its ramp. */
+    private var isSunriseSession = false
     /** Absolute deadline (epoch ms) of the active sleep timer; 0 = none. */
     private var sleepTimerEndMs = 0L
 
@@ -127,6 +133,43 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     windowManager.updateViewLayout(it, params)
                 }
             }
+        }
+
+        // A previous session's pause must not carry over into this one.
+        FilterPause.resume()
+
+        // Take the overlay window off the screen while the filter is paused — by the notification's
+        // Pause button or by a per-app "pause filter" rule — and put it back afterwards. The window
+        // is removed, not just drawn transparent: payment and banking apps reject touches whenever
+        // another app's window covers them, visible or not.
+        serviceScope.launch {
+            combine(
+                FilterPause.pausedUntilElapsedMs,
+                NightShieldManager.filterTemporarilyDisabled,
+            ) { pausedUntil, pausedForApp -> pausedUntil > 0L || pausedForApp }
+                .distinctUntilChanged()
+                .collect { hidden ->
+                    if (hidden) hideOverlay() else if (started) showOverlay(isSunriseSession)
+                }
+        }
+
+        // Pause countdown: refresh both notifications, then resume when the deadline passes.
+        // Re-checked each second against the clock instead of one long delay(), so a device that
+        // dozed through the deadline resumes the moment it wakes.
+        serviceScope.launch {
+            FilterPause.pausedUntilElapsedMs.drop(1).collectLatest { until ->
+                updateNotification()
+                updatePauseNotification()
+                if (until > 0L) {
+                    while (FilterPause.remainingMs() > 0L) delay(minOf(FilterPause.remainingMs(), 1_000L))
+                    FilterPause.resume()
+                }
+            }
+        }
+
+        // Keep the Pause button's label in step with the length chosen in Settings.
+        serviceScope.launch {
+            FilterPause.durationChanges.drop(1).collect { updatePauseNotification() }
         }
 
         // Sleep timer — persist deadline and update notification every minute
@@ -209,13 +252,17 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val isSunrise = intent?.getBooleanExtra(EXTRA_SUNRISE, false) ?: false
+        isSunriseSession = isSunrise
+        started = true
 
         // Active state was claimed in onCreate (which always runs before onStartCommand, including
         // on START_STICKY restarts). Refresh the widgets here so they reflect ON immediately.
         NightShieldWidgetProvider.updateWidget(applicationContext)
         IntensityWidgetProvider.updateAll(applicationContext)
 
-        showOverlay(isSunrise)
+        // Started while a paused app is in front (e.g. a shake inside Paytm): stay off screen; the
+        // pause collector in onCreate shows the overlay once that app is left.
+        if (!isOverlayHidden()) showOverlay(isSunrise)
         createNotificationChannel()
         val notification = createNotification()
         try {
@@ -231,6 +278,8 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             stopSelf()
             return START_NOT_STICKY
         }
+
+        updatePauseNotification()
 
         // Now firmly foreground: safe to stop the shake monitor without dropping the FGS state.
         ShakeMonitorService.stop(applicationContext)
@@ -303,10 +352,28 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         }
     }
 
+    private fun isOverlayHidden(): Boolean =
+        FilterPause.isPaused || NightShieldManager.filterTemporarilyDisabled.value
+
+    /**
+     * Removes the overlay window while the service keeps running (see the pause collector in
+     * onCreate). [showOverlay] rebuilds it; the Pro gradual fade then eases the filter back in.
+     */
+    private fun hideOverlay() {
+        val view = overlayView ?: return
+        // The colour picker lives in the overlay; leaving it "open" would re-show the overlay
+        // with the picker drawn but untouchable.
+        NightShieldManager.setIsCanvasColorPickerVisible(false)
+        // Same guard as onDestroy: the view may already be detached if the permission was revoked.
+        try { windowManager.removeView(view) } catch (_: Exception) {}
+        overlayView = null
+    }
+
     private fun showOverlay(sunrise: Boolean) {
         if (overlayView != null) return
-        // Set the fade-in's starting value before the view draws its first frame.
-        startFadeIn(sunrise)
+        // Set the fade-in's starting value before the view draws its first frame. A running
+        // Sunrise ramp owns the multiplier, so re-showing mid-ramp must not reset it to full.
+        if (sunriseJob?.isActive != true) startFadeIn(sunrise)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         _lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
 
@@ -364,6 +431,65 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         notificationManager.createNotificationChannel(channel)
     }
 
+    /**
+     * The second, standalone notification that explains why some apps misbehave under a filter and
+     * carries the Pause button. Separate from the foreground notification because Android shows at
+     * most three actions and Pro already uses all three there (Turn off, -10%, +10%); on its own
+     * channel so people who never need it can silence just this one.
+     *
+     * Reaching the button must be quick, because the user is mid-payment and annoyed:
+     *  - Tapping the notification itself pauses (or resumes); the button is only a second way in.
+     *    Buttons are hidden until a notification is expanded, the body never is.
+     *  - It has its own group key. Left ungrouped, Android bundles it with the foreground
+     *    notification into a collapsed "Night Shield (2)" row, three taps away from Pause.
+     *
+     * While paused it becomes a system-rendered countdown (chronometer) with "Resume now", so it
+     * needs no per-second re-posting. On Android 13+ it is simply not shown when the notification
+     * permission is denied; on Android 14+ the user may swipe it away, and it returns the next
+     * time the filter is switched on.
+     */
+    private fun updatePauseNotification() {
+        if (!isRunning) return
+        notificationManager.createNotificationChannel(
+            NotificationChannel(PAUSE_CHANNEL_ID, PAUSE_CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW)
+        )
+        fun action(requestCode: Int, name: String) = PendingIntent.getBroadcast(
+            this, requestCode,
+            Intent(this, FilterPauseReceiver::class.java).apply { action = name },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val builder = NotificationCompat.Builder(this, PAUSE_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification_24)
+            .setGroup(PAUSE_GROUP)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+
+        val remaining = FilterPause.remainingMs()
+        if (remaining > 0L) {
+            builder
+                .setContentTitle("Filter paused")
+                .setContentText("It turns back on by itself. Tap to bring it back now.")
+                .setContentIntent(action(21, FilterPauseReceiver.ACTION_RESUME))
+                .setWhen(System.currentTimeMillis() + remaining)
+                .setShowWhen(true)
+                .setUsesChronometer(true)
+                .setChronometerCountDown(true)
+                .addAction(R.drawable.ic_power_24, "Resume now", action(21, FilterPauseReceiver.ACTION_RESUME))
+        } else {
+            val length = FilterPause.duration(this).label
+            val text = "Some payment and banking apps refuse to work while a screen filter is on. " +
+                "Tap here and the filter steps aside for $length, then returns by itself."
+            builder
+                .setContentTitle("Payment app not working? Tap to pause")
+                .setContentIntent(action(20, FilterPauseReceiver.ACTION_PAUSE))
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setShowWhen(false)
+                .addAction(R.drawable.ic_pause_24, "Pause $length", action(20, FilterPauseReceiver.ACTION_PAUSE))
+        }
+        notificationManager.notify(PAUSE_NOTIFICATION_ID, builder.build())
+    }
+
     /** Re-posts the foreground notification with updated intensity/timer text. */
     private fun updateNotification() {
         notificationManager.notify(NOTIFICATION_ID, createNotification())
@@ -417,8 +543,12 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_24)
             .setContentTitle(getString(R.string.notification_title))
-            .setContentText(getString(R.string.notification_text_format, intensityPct) + timerSuffix)
+            .setContentText(
+                if (FilterPause.isPaused) "Paused for a moment" + timerSuffix
+                else getString(R.string.notification_text_format, intensityPct) + timerSuffix
+            )
             .setContentIntent(openIntent)
+            .setGroup(FILTER_GROUP)
             .setOngoing(true)
             .addAction(R.drawable.ic_power_24, getString(R.string.notification_action_stop), stopIntent)
 
@@ -458,6 +588,9 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         fadeJob?.cancel()
         eyeBreakJob?.cancel()
         serviceScope.cancel()
+        // The pause belongs to this session; its notification must not outlive the filter.
+        FilterPause.resume()
+        notificationManager.cancel(PAUSE_NOTIFICATION_ID)
         // Reset so a stale mid-ramp value can't leave the next activation's first frame dimmed.
         NightShieldManager.setFadeMultiplier(1f)
         // Sole writer of active state: clear the persisted flag + reactive flow, then
@@ -525,6 +658,12 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         private const val CHANNEL_ID = "night_shield_service_channel"
         private const val CHANNEL_NAME = "Night Shield Service"
         private const val NOTIFICATION_ID = 1234
+        private const val PAUSE_CHANNEL_ID = "night_shield_pause"
+        private const val PAUSE_CHANNEL_NAME = "Pause for payment apps"
+        private const val PAUSE_NOTIFICATION_ID = 4321
+        // Distinct group keys keep the two notifications as separate rows (see updatePauseNotification).
+        private const val FILTER_GROUP = "night_shield_filter"
+        private const val PAUSE_GROUP = "night_shield_pause"
         private const val EYE_BREAK_CHANNEL_ID = "night_shield_eye_break"
         private const val EYE_BREAK_NOTIFICATION_ID = 5678
     }

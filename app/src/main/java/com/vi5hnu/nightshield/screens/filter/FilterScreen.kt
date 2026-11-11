@@ -65,6 +65,7 @@ import com.vi5hnu.nightshield.BatteryHelpers
 import com.vi5hnu.nightshield.BedtimeHelper
 import com.vi5hnu.nightshield.IntensityWidgetProvider
 import com.vi5hnu.nightshield.NightShieldController
+import com.vi5hnu.nightshield.FilterPause
 import com.vi5hnu.nightshield.NightShieldManager
 import com.vi5hnu.nightshield.OverlayHelpers
 import com.vi5hnu.nightshield.R
@@ -520,6 +521,37 @@ private fun FilterHero(
                         ),
                         style = MaterialTheme.typography.labelLarge,
                     )
+                }
+
+                // Pause for payment apps — the in-app twin of the Pause notification. Covers people
+                // who denied notifications, and Android 16, where tapping the collapsed "Night
+                // Shield (2)" notification group opens the app instead of pausing.
+                if (areServicesActive) {
+                    val pausedUntil by FilterPause.pausedUntilElapsedMs.collectAsState()
+                    val paused = pausedUntil > 0L
+                    Spacer(Modifier.height(Spacing.md))
+                    OutlinedButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (paused) FilterPause.resume() else FilterPause.pause(context)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        shape = RoundedCornerShape(Radius.md),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_pause_24),
+                            contentDescription = null,
+                            modifier = Modifier.size(IconSize.sm + 2.dp),
+                        )
+                        Spacer(Modifier.size(Spacing.sm))
+                        Text(
+                            if (paused) "Paused — tap to resume"
+                            else "Pause ${FilterPause.duration(context).label} for payment apps",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
                 }
 
                 // PRO — one-tap bedtime routine: warm colour, dimmed, 30-minute sleep timer, then on.

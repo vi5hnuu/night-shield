@@ -171,6 +171,12 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(Spacing.xxl))
 
+        // ── Pause for payment apps ────────────────────────────────────────────
+        SectionHeader("Payment and banking apps")
+        PauseSettings()
+
+        Spacer(Modifier.height(Spacing.xxl))
+
         // ── Automation ────────────────────────────────────────────────────────
         SectionHeader("Automation")
         TaskerGroup(isPro = isPro, onShowUpgrade = onShowUpgrade)
