@@ -536,6 +536,9 @@ private fun FilterHero(
                 if (areServicesActive) {
                     val pausedUntil by FilterPause.pausedUntilElapsedMs.collectAsState()
                     val paused = pausedUntil > 0L
+                    // Recomposes when the length is changed in Settings during this session.
+                    val changedLength by FilterPause.durationChanges.collectAsState()
+                    val pauseLength = (changedLength ?: FilterPause.duration(context)).label
                     Spacer(Modifier.height(Spacing.md))
                     OutlinedButton(
                         onClick = {
@@ -555,7 +558,7 @@ private fun FilterHero(
                         Spacer(Modifier.size(Spacing.sm))
                         Text(
                             if (paused) "Paused — tap to resume"
-                            else "Pause ${FilterPause.duration(context).label} for payment apps",
+                            else "Pause $pauseLength for payment apps",
                             style = MaterialTheme.typography.labelLarge,
                         )
                     }

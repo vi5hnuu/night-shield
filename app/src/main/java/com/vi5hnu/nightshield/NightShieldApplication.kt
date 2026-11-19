@@ -20,5 +20,8 @@ class NightShieldApplication : Application() {
         if (BillingManager.isProCached(this)) ProGate.grant()
         // Ad-earned trial: restore it, or apply free limits if it ran out while we were dead.
         ProTrial.reconcile(this)
+        // A fresh process means any pause notification is an orphan of a killed one (the filter
+        // service re-posts its own when it starts, which is always after this).
+        NightShieldService.cancelPauseNotification(this)
     }
 }

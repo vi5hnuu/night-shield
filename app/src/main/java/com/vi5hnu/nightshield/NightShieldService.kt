@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.content.res.Configuration
@@ -168,6 +169,7 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         }
 
         // Keep the Pause button's label in step with the length chosen in Settings.
+        // (Collected here rather than read once so a change made while the filter runs shows up.)
         serviceScope.launch {
             FilterPause.durationChanges.drop(1).collect { updatePauseNotification() }
         }
@@ -440,8 +442,14 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
      * Reaching the button must be quick, because the user is mid-payment and annoyed:
      *  - Tapping the notification itself pauses (or resumes); the button is only a second way in.
      *    Buttons are hidden until a notification is expanded, the body never is.
-     *  - It has its own group key. Left ungrouped, Android bundles it with the foreground
-     *    notification into a collapsed "Night Shield (2)" row, three taps away from Pause.
+     *  - It has its own group key, which keeps it a separate row up to Android 15. Android 16
+     *    force-groups every app's notifications regardless ("Night Shield · 2"), so there Pause is
+     *    two taps (expand, then tap); the in-app Pause button on the Filter screen covers that.
+     *
+     * Its lifetime is tied to this service. A process kill removes the foreground notification
+     * but not this one, so [cancelPauseNotification] also runs at process start
+     * (NightShieldApplication) and when a stale one is tapped (FilterPauseReceiver). Without that
+     * an ongoing, undismissable orphan would sit in the shade on Android 10–13.
      *
      * While paused it becomes a system-rendered countdown (chronometer) with "Resume now", so it
      * needs no per-second re-posting. On Android 13+ it is simply not shown when the notification
@@ -590,7 +598,7 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         serviceScope.cancel()
         // The pause belongs to this session; its notification must not outlive the filter.
         FilterPause.resume()
-        notificationManager.cancel(PAUSE_NOTIFICATION_ID)
+        cancelPauseNotification(this)
         // Reset so a stale mid-ramp value can't leave the next activation's first frame dimmed.
         NightShieldManager.setFadeMultiplier(1f)
         // Sole writer of active state: clear the persisted flag + reactive flow, then
@@ -652,6 +660,12 @@ class NightShieldService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             private set
 
         const val EXTRA_SUNRISE = "sunrise_mode"
+
+        /** Removes the pause notification; safe to call whether or not the service is alive. */
+        fun cancelPauseNotification(context: Context) {
+            (context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
+                .cancel(PAUSE_NOTIFICATION_ID)
+        }
         private const val SUNRISE_DURATION_MS = 30 * 60 * 1000L  // 30 minutes
         private const val FADE_IN_DURATION_MS = 12_000L          // gradual fade-in over 12 s
         private const val FADE_IN_STEP_MS = 200L                 // ramp update interval

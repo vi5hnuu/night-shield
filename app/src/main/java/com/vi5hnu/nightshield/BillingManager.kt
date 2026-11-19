@@ -237,19 +237,19 @@ object BillingManager {
         val sig = prefs.getString(KEY_RECEIPT_SIG, null)
         if (json != null && sig != null) {
             // Widgets, receivers and start-up all ask; one RSA check per distinct receipt is enough.
-            if (sig == verifiedSignature) return true
+            val receipt = json + sig
+            if (receipt == verifiedReceipt) return true
             return PurchaseVerifier.isGenuine(json, sig, context.packageName)
-                .also { if (it) verifiedSignature = sig }
+                .also { if (it) verifiedReceipt = receipt }
         }
         return prefs.getBoolean(KEY_LEGACY_IS_PRO, false)
     }
 
     /**
-     * Signature of the receipt [isProCached] last verified in this process. Only an in-memory
-     * shortcut: the stored JSON can't be swapped without also changing its signature, and anything
-     * that changes the signature is verified afresh.
+     * The receipt (JSON + signature) [isProCached] last verified in this process. Only an
+     * in-memory shortcut; keyed on both halves so any change to either is verified afresh.
      */
-    @Volatile private var verifiedSignature: String? = null
+    @Volatile private var verifiedReceipt: String? = null
 
     /**
      * Re-query Play purchases — used by the "Restore purchase" button.
@@ -324,8 +324,14 @@ object BillingManager {
             BillingClient.BillingResponseCode.SERVICE_DISCONNECTED ->
                 toast(context, "Google Play is unavailable right now. Please try again later.")
 
-            else ->
-                toast(context, "Purchase couldn't be completed. Nothing has been charged.")
+            else -> toast(
+                context,
+                // PBL 8+ sub-response code: say why when Play tells us, so the user can fix it.
+                if (result.onPurchasesUpdatedSubResponseCode ==
+                    BillingClient.OnPurchasesUpdatedSubResponseCode.PAYMENT_DECLINED_DUE_TO_INSUFFICIENT_FUNDS
+                ) "Payment declined: not enough balance. Nothing has been charged."
+                else "Purchase couldn't be completed. Nothing has been charged.",
+            )
         }
     }
 
