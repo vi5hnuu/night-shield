@@ -81,6 +81,7 @@
 
     <!-- QS Tile -->
     <string name="qs_tile_label">Night Shield</string>
+    <string name="qs_pause_tile_label">Pause filter</string>
 
     <!-- App description (Play Store metadata) -->
     <string name="app_description">Blue light filter overlay to protect your eyes at night</string>
