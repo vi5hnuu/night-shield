@@ -18,9 +18,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -33,7 +30,6 @@ import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -41,29 +37,35 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
+import com.google.android.gms.ads.LoadAdError
 import com.vi5hnu.nightshield.AdConfig
 import com.vi5hnu.nightshield.AdConsentManager
+import com.vi5hnu.nightshield.HouseAds
 import com.vi5hnu.nightshield.R
 import com.vi5hnu.nightshield.screens.apps.AppsScreen
 import com.vi5hnu.nightshield.screens.filter.FilterScreen
 import com.vi5hnu.nightshield.screens.schedule.ScheduleScreen
 import com.vi5hnu.nightshield.screens.settings.SettingsScreen
 import com.vi5hnu.nightshield.ui.components.ProBadge
+import com.vi5hnu.nightshield.ui.components.ProUpsellDialog
 import com.vi5hnu.nightshield.ui.components.readableWidth
 import com.vi5hnu.nightshield.ui.theme.AdaptiveLayout
 import com.vi5hnu.nightshield.ui.theme.IconSize
-import com.vi5hnu.nightshield.ui.theme.Radius
+import kotlinx.coroutines.delay
 
 /**
  * The app's four top-level destinations.
@@ -117,35 +119,26 @@ fun NightShieldApp(
     }
 
     // Contextual upgrade prompt — fires once after sufficient engagement.
+    val houseUpsellDue by HouseAds.upsellDue.collectAsState()
     if (showUpgradeDialog) {
-        AlertDialog(
-            onDismissRequest = { showUpgradeDialog = false; actions.onUpgradePromptShown() },
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            title = { Text("Enjoying Night Shield?", style = MaterialTheme.typography.titleMedium) },
-            text = {
-                Text(
-                    "Go ad-free and unlock auto sunset, the bedtime routine and " +
-                        "${PRO_FEATURE_COUNT - 3} more Pro features — one payment, no " +
-                        "subscription, forever yours.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showUpgradeDialog = false
-                        actions.onUpgradePromptShown()
-                        showUpgradeScreen = true
-                    },
-                    shape = RoundedCornerShape(Radius.sm),
-                ) { Text("See Pro features") }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showUpgradeDialog = false; actions.onUpgradePromptShown() },
-                ) { Text("Not now") }
-            },
+        val dismiss = { showUpgradeDialog = false; actions.onUpgradePromptShown() }
+        ProUpsellDialog(
+            title = "Enjoying Night Shield?",
+            text = "Go ad-free and unlock auto sunset, the bedtime routine and " +
+                "${PRO_FEATURE_COUNT - 3} more Pro features — one payment, no " +
+                "subscription, forever yours.",
+            onSeePro = { dismiss(); showUpgradeScreen = true },
+            onDismiss = dismiss,
+        )
+    } else if (houseUpsellDue && !isPaid) {
+        // Shown in place of an interstitial that couldn't load (see HouseAds): at most once a
+        // day, and worded so nobody offline by accident feels accused of anything.
+        ProUpsellDialog(
+            title = "Night Shield is free thanks to ads",
+            text = "One payment removes ads for good and unlocks every Pro feature. " +
+                "No subscription.",
+            onSeePro = { HouseAds.dismissUpsell(); showUpgradeScreen = true },
+            onDismiss = HouseAds::dismissUpsell,
         )
     }
 
@@ -209,7 +202,9 @@ fun NightShieldApp(
             Column(modifier = if (useRail) Modifier.navigationBarsPadding() else Modifier) {
                 // Banner ad (free users only) sits above the nav bar so it never covers content
                 // or the navigation itself.
-                if (!isPaid) BannerAd()  // renders nothing until consent allows ads
+                // Renders nothing until the consent check finishes; falls back to our own Pro
+                // card when no ad can be served.
+                if (!isPaid) BannerAd(onSeePro = showUpgrade)
                 if (!useRail) NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer,
                 ) {
@@ -324,32 +319,63 @@ fun NightShieldApp(
 
 // ── Banner ad ─────────────────────────────────────────────────────────────────
 
+/** How often a failed banner retries while our own Pro card fills its slot. */
+private const val BANNER_RETRY_MS = 60_000L
+
 /**
  * Anchored adaptive banner: sized by the SDK to the real width instead of a fixed 320×50, so it
  * fills phones edge to edge and tablets without empty gutters — adaptive banners also fill and pay
  * better. Re-created when the width changes (rotation, rail ↔ bar), and destroyed with the view.
+ *
+ * When no ad can be served (it failed to load, or consent could not be settled this launch) the
+ * slot shows [HouseBanner] at the same height instead of sitting empty, and the real ad is retried
+ * every [BANNER_RETRY_MS]; the first ad that loads takes the slot back. Why failures are never
+ * told apart (offline vs. blocked) is explained on [HouseAds].
  */
 @Composable
-private fun BannerAd() {
+private fun BannerAd(onSeePro: () -> Unit) {
     // No request until UMP consent allows ads (see AdConsentManager).
     val adsReady by AdConsentManager.adsReady.collectAsState()
-    if (!adsReady) return
+    val consentChecked by AdConsentManager.consentChecked.collectAsState()
+    var loadFailed by remember { mutableStateOf(false) }
+    var attempt by remember { mutableIntStateOf(0) }
+    // Re-keying the AdView below makes a fresh request; a failed AdView never retries by itself.
+    LaunchedEffect(loadFailed, attempt) {
+        if (loadFailed) {
+            delay(BANNER_RETRY_MS)
+            attempt++
+        }
+    }
+    if (!adsReady && !consentChecked) return
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         val widthDp = maxWidth.value.toInt()
-        key(widthDp) {
+        val context = LocalContext.current
+        val adSize = remember(widthDp) {
+            AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(context, widthDp)
+        }
+        if (adsReady) key(widthDp, attempt) {
             AndroidView(
                 modifier = Modifier.fillMaxWidth(),
                 factory = { ctx ->
                     AdView(ctx).apply {
-                        setAdSize(
-                            AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(ctx, widthDp),
-                        )
+                        setAdSize(adSize)
                         adUnitId = AdConfig.bannerUnitId
+                        // Main-thread callbacks, so Compose state can be set directly.
+                        adListener = object : AdListener() {
+                            /** Once an ad shows, a failed auto-refresh keeps it on screen. */
+                            private var showing = false
+                            override fun onAdLoaded() { showing = true; loadFailed = false }
+                            override fun onAdFailedToLoad(error: LoadAdError) {
+                                if (!showing) loadFailed = true
+                            }
+                        }
                         loadAd(AdConfig.request())
                     }
                 },
                 onRelease = { it.destroy() },
             )
         }
+        // Drawn over the unloaded (zero-height) AdView, at the ad's own height.
+        if (!adsReady || loadFailed) HouseBanner(height = adSize.height.dp, onSeePro = onSeePro)
     }
 }

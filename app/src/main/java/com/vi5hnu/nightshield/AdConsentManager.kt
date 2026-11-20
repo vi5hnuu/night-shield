@@ -42,6 +42,15 @@ object AdConsentManager {
     /** True once ads may be requested: consent allows it and the Mobile Ads SDK is started. */
     val adsReady: StateFlow<Boolean> = _adsReady.asStateFlow()
 
+    private val _consentChecked = MutableStateFlow(false)
+    /**
+     * True once this launch's consent check has finished, whatever it decided. With [adsReady]
+     * still false after that, no ad can be requested this session (typically a first launch with
+     * no internet for the app), so the ad slots show Night Shield's own promos ([HouseAds]) instead
+     * of sitting empty. Those need no consent: they make no request and send nothing.
+     */
+    val consentChecked: StateFlow<Boolean> = _consentChecked.asStateFlow()
+
     private val _privacyOptionsRequired = MutableStateFlow(false)
     /** True where users must be able to revisit their choice (shows the Settings entry). */
     val privacyOptionsRequired: StateFlow<Boolean> = _privacyOptionsRequired.asStateFlow()
@@ -87,6 +96,7 @@ object AdConsentManager {
     private fun onConsentResolved(activity: Activity, onAdsReady: () -> Unit) {
         refreshState(activity)
         if (consentInfo(activity).canRequestAds()) startAds(activity, onAdsReady)
+        _consentChecked.value = true
     }
 
     private fun refreshState(context: Context) {

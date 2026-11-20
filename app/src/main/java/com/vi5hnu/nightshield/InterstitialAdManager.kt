@@ -23,6 +23,9 @@ import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
  * home screen, or as the app opens, is against AdMob policy and a poor experience.
  * Paid users never see it; a rewarded-trial user still does (the trial unlocks features, not ad
  * removal).
+ *
+ * When the slot comes up and no ad can be served (the last load failed, or ads can't be requested
+ * this launch), [HouseAds] may show a short upgrade note instead, at most once a day.
  */
 object InterstitialAdManager {
 
@@ -42,6 +45,8 @@ object InterstitialAdManager {
 
     private var interstitialAd: InterstitialAd? = null
     private var isLoading = false
+    /** The most recent load failed (offline, no fill, or the app's internet is cut off). */
+    private var lastLoadFailed = false
 
     fun loadAd(context: Context) {
         // Never request an ad before UMP consent allows it (see AdConsentManager).
@@ -56,10 +61,12 @@ object InterstitialAdManager {
                 override fun onAdLoaded(ad: InterstitialAd) {
                     interstitialAd = ad
                     isLoading = false
+                    lastLoadFailed = false
                 }
                 override fun onAdFailedToLoad(error: LoadAdError) {
                     interstitialAd = null
                     isLoading = false
+                    lastLoadFailed = true
                 }
             }
         )
@@ -83,7 +90,15 @@ object InterstitialAdManager {
         val now = System.currentTimeMillis()
         if (prefs.getInt(KEY_STOPS, 0) < STOPS_PER_AD) return
         if (now - prefs.getLong(KEY_LAST_SHOWN, 0L) < MIN_INTERVAL_MS) return
-        val ad = interstitialAd ?: run { loadAd(activity); return }
+        val ad = interstitialAd ?: run {
+            // The slot is due but no ad can be served. Only a known failure counts: an ad that is
+            // merely still loading gets its chance next time instead.
+            if (adsUnavailable() && HouseAds.requestUpsell(activity)) {
+                prefs.edit { putInt(KEY_STOPS, 0) }
+            }
+            loadAd(activity)
+            return
+        }
 
         ad.fullScreenContentCallback = object : FullScreenContentCallback() {
             override fun onAdShowedFullScreenContent() {
@@ -108,6 +123,11 @@ object InterstitialAdManager {
         FullScreenAds.onShowRequested()
         ad.show(activity)
     }
+
+    /** No ad can be served right now: the last load failed, or consent settled without allowing ads. */
+    private fun adsUnavailable(): Boolean =
+        lastLoadFailed ||
+            (AdConsentManager.consentChecked.value && !AdConsentManager.adsReady.value)
 
     private fun Context.adPrefs() =
         applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
