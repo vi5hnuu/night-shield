@@ -23,6 +23,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 
 /**
  * Manages Google Play in-app billing for the "night_shield_pro" one-time product.
@@ -36,6 +40,8 @@ import kotlinx.coroutines.launch
  *  4. On success, [ProGate.grant] is called and the status is cached in SharedPreferences.
  *  5. On reinstall, [queryPurchases] runs on connect and restores access. Users can also trigger
  *     it manually with "Restore purchase" → [restore].
+ *  6. [recheck] runs from [PurchaseRecheckWorker] about once a day whenever the phone is online,
+ *     so a refund, or a slow payment that cleared, is noticed even if the app is never opened.
  *
  * Entitlement always comes from Play. The SharedPreferences cache exists only so the UI does not
  * flicker while Play is being consulted, and it is excluded from backup (see
@@ -56,6 +62,9 @@ import kotlinx.coroutines.launch
 object BillingManager {
 
     const val PRODUCT_ID = "night_shield_pro"
+
+    /** A background [recheck] gives up after this; the next daily run simply tries again. */
+    private const val RECHECK_TIMEOUT_MS = 30_000L
     private const val PREFS = "billing_prefs"
 
     /** Play's documented promo-code deep link (a code can be appended as `?code=`). */
@@ -90,6 +99,13 @@ object BillingManager {
      * so both the connection and the queries are gated on readiness rather than fired blind.
      */
     private var connecting = false
+
+    /**
+     * Waiting for the connection [startConnection] is making; each gets true when it is ready.
+     * Only [recheck] waits: it runs in a worker that must know the outcome before it may finish.
+     * Synchronized: Play's connection callback may arrive off the main thread.
+     */
+    private val readyWaiters = mutableListOf<(Boolean) -> Unit>()
 
     /**
      * True from the Unlock tap until Play reports back. A double tap used to start two flows; the
@@ -252,6 +268,45 @@ object BillingManager {
     @Volatile private var verifiedReceipt: String? = null
 
     /**
+     * Background re-verification for [PurchaseRecheckWorker]: connects if needed, asks Play, and
+     * returns once Play has answered (or after [RECHECK_TIMEOUT_MS]).
+     *
+     * It goes through the same [queryPurchases] as every other check, so granting, revoking,
+     * acknowledging and the free limits all stay in one place. A failed or timed-out query changes
+     * nothing: entitlement is never taken away because Play couldn't be reached.
+     */
+    suspend fun recheck(context: Context) = withContext(Dispatchers.Main) {
+        val app = context.applicationContext
+        init(app)
+        withTimeoutOrNull(RECHECK_TIMEOUT_MS) {
+            if (!awaitReady(app)) return@withTimeoutOrNull
+            suspendCancellableCoroutine { cont ->
+                queryPurchases(app) { if (cont.isActive) cont.resume(Unit) }
+            }
+        }
+    }
+
+    /** Suspends until the client is connected; false if the connection attempt failed. */
+    private suspend fun awaitReady(context: Context): Boolean {
+        val client = billingClient ?: return false
+        if (client.isReady) return true
+        return suspendCancellableCoroutine { cont ->
+            val waiter: (Boolean) -> Unit = { ready -> if (cont.isActive) cont.resume(ready) }
+            synchronized(readyWaiters) { readyWaiters += waiter }
+            cont.invokeOnCancellation { synchronized(readyWaiters) { readyWaiters -= waiter } }
+            // No-op when a connection is already under way; its callback answers the waiter.
+            startConnection(context)
+        }
+    }
+
+    private fun notifyReadyWaiters(ready: Boolean) {
+        val waiters = synchronized(readyWaiters) {
+            readyWaiters.toList().also { readyWaiters.clear() }
+        }
+        waiters.forEach { it(ready) }
+    }
+
+    /**
      * Re-query Play purchases — used by the "Restore purchase" button.
      * On reinstall with the same Google account this restores pro access.
      */
@@ -342,16 +397,19 @@ object BillingManager {
         client.startConnection(object : BillingClientStateListener {
             override fun onBillingSetupFinished(result: BillingResult) {
                 connecting = false
-                if (result.responseCode == BillingClient.BillingResponseCode.OK) {
+                val ok = result.responseCode == BillingClient.BillingResponseCode.OK
+                if (ok) {
                     scope.launch {
                         queryPurchases(context)
                         queryOffer()
                     }
                 }
+                notifyReadyWaiters(ok)
             }
 
             override fun onBillingServiceDisconnected() {
                 connecting = false
+                notifyReadyWaiters(false)
                 // No-op: enableAutoServiceReconnection() makes the library re-establish the
                 // connection automatically on the next API call. Calling startConnection()
                 // here would compete with that and is discouraged by the PBL docs.
@@ -414,8 +472,14 @@ object BillingManager {
      *
      * @param announceResult true when the user asked for this explicitly ("Restore purchase" or an
      *   already-owned purchase), so silence would read as a broken button.
+     * @param onDone runs once Play's answer has been applied, or straight away when there was no
+     *   answer to apply. Lets [recheck] finish only after the outcome is saved.
      */
-    private fun queryPurchases(context: Context, announceResult: Boolean = false) {
+    private fun queryPurchases(
+        context: Context,
+        announceResult: Boolean = false,
+        onDone: () -> Unit = {},
+    ) {
         val client = billingClient
         if (client == null || !client.isReady) {
             // Only the user-initiated path says anything: a background re-check that arrives
@@ -424,6 +488,7 @@ object BillingManager {
                 toast(context, "Connecting to Google Play — please try again in a moment.")
             }
             startConnection(context)
+            onDone()
             return
         }
         client.queryPurchasesAsync(
@@ -437,6 +502,7 @@ object BillingManager {
                 if (announceResult) {
                     toast(context, "Couldn't reach Google Play. Check your connection and try again.")
                 }
+                onDone()
                 return@queryPurchasesAsync
             }
 
@@ -489,6 +555,7 @@ object BillingManager {
                     )
                 }
             }
+            onDone()
         }
     }
 

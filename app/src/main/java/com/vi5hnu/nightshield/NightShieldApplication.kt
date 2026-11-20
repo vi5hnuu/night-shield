@@ -12,7 +12,8 @@ import android.app.Application
  * auto sunset/sunrise midnight recompute.
  *
  * Only the cached entitlement (and the locally stored rewarded trial) is applied here — no billing connection is opened. [BillingManager]
- * still verifies with Play whenever the UI or a service initialises it.
+ * still verifies with Play whenever the UI or a service initialises it, and daily through
+ * [PurchaseRecheckWorker].
  */
 class NightShieldApplication : Application() {
     override fun onCreate() {
@@ -23,5 +24,8 @@ class NightShieldApplication : Application() {
         // A fresh process means any pause notification is an orphan of a killed one (the filter
         // service re-posts its own when it starts, which is always after this).
         NightShieldService.cancelPauseNotification(this)
+        // Daily Play re-check while online, so refunds and cleared payments are noticed even when
+        // the app itself is never opened.
+        PurchaseRecheckWorker.schedule(this)
     }
 }
